@@ -7,7 +7,7 @@ Thank you for your interest in contributing!
 Clone the repository
 
 ```bash
-git clone https://github.com/<username>/VenomOS.git
+git clone https://github.com/BassemMohamed44/VenomOS.git
 ```
 
 Build

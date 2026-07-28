@@ -1,13 +1,31 @@
-# 🐍 VenomOS
+<div align="center">
+  <img width="260" height="260" src="assets/VENOMOS.png" alt="Venom-OS-icon"/>
+  <h1 align="center">VenomOS 𝐕🕷️🕸️</h1>
+  <p align="center"> VenomOS is a 64-bit educational operating system built from scratch using Assembly (NASM) and Modern C++. It features a custom BIOS bootloader, Long Mode support, a freestanding kernel, interrupt handling, PS/2 keyboard driver, VGA terminal, interactive shell, and a built-in Snake game.</p>
+</div>
 
 <div align="center">
 
-![Platform](https://img.shields.io/badge/Platform-x86__64-blue)
-![Language](https://img.shields.io/badge/C%2B%2B-17-00599C)
-![Assembly](https://img.shields.io/badge/Assembly-NASM-orange)
-![Bootloader](https://img.shields.io/badge/Bootloader-Custom-success)
-![Status](https://img.shields.io/badge/Status-Active-success)
-![License](https://img.shields.io/badge/License-MIT-green)
+<div align="center">
+  <img src="https://img.shields.io/static/v1?label=Platform&message=x86__64&color=4C0099" alt="platform"/>
+  <img src="https://img.shields.io/static/v1?label=C%2B%2B&message=17&color=4C0099" alt="language"/>
+  <img src="https://img.shields.io/static/v1?label=Assembly&message=NASM&color=4C0099" alt="assembly"/>
+  <br>
+  <img src="https://img.shields.io/static/v1?label=Bootloader&message=Custom&color=4C0099" alt="bootloader"/>
+  <img src="https://img.shields.io/static/v1?label=Status&message=Active&color=4C0099" alt="status"/>
+  <br>
+   <img src="https://img.shields.io/static/v1?label=License&message=MIT&color=4C0099" alt="license"/>
+</div>
+<br>
+
+<div align="center">
+  
+  [![Instagram](https://img.shields.io/badge/Instagram-%23E4405F.svg?style=for-the-badge&logo=Instagram&logoColor=white)](https://instagram.com/@bassemmohamed_0)
+  [![Reddit](https://img.shields.io/badge/Reddit-%23FF4500.svg?style=for-the-badge&logo=Reddit&logoColor=white)](https://reddit.com/user/00xBassem)
+  [![X](https://img.shields.io/badge/X-black.svg?style=for-the-badge&logo=X&logoColor=white)](https://x.com/@Basem2Mohamed)
+  
+</div>
+<p align="center">Made possible by <a href="https://bassemmohamed.pages.dev/"><strong>BassemMohamed</strong></a></p>
 
 A 64-bit educational operating system built completely from scratch using **Assembly** and **Modern C++**.
 
@@ -22,29 +40,29 @@ Everything boots directly from BIOS.
 
 ---
 
-# ✨ Features
+# Features
 
-- ✅ Custom Stage 1 Bootloader
-- ✅ Custom Stage 2 Bootloader
-- ✅ BIOS Disk Loading
-- ✅ A20 Line Enable
-- ✅ Global Descriptor Table (GDT)
-- ✅ Protected Mode Transition
-- ✅ Long Mode (64-bit)
-- ✅ Custom Linker Script
-- ✅ Freestanding C++17 Kernel
-- ✅ VGA Text Terminal
-- ✅ Interrupt Descriptor Table (IDT)
-- ✅ Hardware Interrupt Handling
-- ✅ PS/2 Keyboard Driver
-- ✅ Interactive Command Shell
-- ✅ Built-in Snake Game
-- ✅ Fully bootable disk image
-- ✅ QEMU Ready
+-  Custom Stage 1 Bootloader
+-  Custom Stage 2 Bootloader
+-  BIOS Disk Loading
+-  A20 Line Enable
+-  Global Descriptor Table (GDT)
+-  Protected Mode Transition
+-  Long Mode (64-bit)
+-  Custom Linker Script
+-  Freestanding C++17 Kernel
+-  VGA Text Terminal
+-  Interrupt Descriptor Table (IDT)
+-  Hardware Interrupt Handling
+-  PS/2 Keyboard Driver
+-  Interactive Command Shell
+-  Built-in Snake Game
+-  Fully bootable disk image
+-  QEMU Ready
 
 ---
 
-# 🏗 Boot Process
+# Boot Process
 
 ```text
 BIOS
@@ -73,7 +91,7 @@ Interactive Shell
 
 ---
 
-# 📂 Project Structure
+# Project Structure
 
 ```
 VenomOS
@@ -105,7 +123,7 @@ VenomOS
 
 ---
 
-# 🧠 Components
+# Components
 
 ## Bootloader
 
@@ -135,7 +153,7 @@ Responsible for:
 
 ---
 
-# 💻 Kernel
+# Kernel
 
 The kernel is written in **freestanding C++17**.
 
@@ -149,7 +167,7 @@ Current responsibilities include:
 
 ---
 
-# ⌨ Keyboard Driver
+# Keyboard Driver
 
 Features:
 
@@ -161,7 +179,7 @@ Features:
 
 ---
 
-# 🖥 VGA Driver
+# VGA Driver
 
 The VGA subsystem provides:
 
@@ -172,7 +190,7 @@ The VGA subsystem provides:
 
 ---
 
-# ⚡ Interrupt System
+# Interrupt System
 
 Implemented features include:
 
@@ -184,7 +202,7 @@ Implemented features include:
 
 ---
 
-# 🐍 Shell
+# Shell
 
 The operating system includes a simple interactive shell.
 
@@ -200,7 +218,7 @@ Current commands:
 
 ---
 
-# 🎮 Snake Game
+# Snake Game
 
 A simple built-in Snake implementation demonstrates:
 
@@ -212,7 +230,7 @@ A simple built-in Snake implementation demonstrates:
 
 ---
 
-# ⚙ Build Requirements
+# Build Requirements
 
 - NASM
 - x86_64-elf GCC Toolchain
@@ -222,7 +240,7 @@ A simple built-in Snake implementation demonstrates:
 
 ---
 
-# 🚀 Build
+# Build
 
 ```bash
 make
@@ -230,7 +248,7 @@ make
 
 ---
 
-# ▶ Run
+# Run
 
 ```bash
 make run
@@ -238,7 +256,7 @@ make run
 
 ---
 
-# 🧩 Technologies
+# Technologies
 
 - NASM Assembly
 - C++17
@@ -250,7 +268,7 @@ make run
 
 ---
 
-# 📈 Current Status
+# Current Status
 
 Implemented:
 
@@ -278,13 +296,13 @@ Planned:
 
 ---
 
-# 🎯 Purpose
+# Purpose
 
 VenomOS is an educational operating system project created to explore low-level software development, operating system internals, bootloaders, CPU architecture, memory management, interrupt handling, and kernel programming from scratch.
 
 ---
 
-# 📜 License
+# License
 
 MIT License
 
@@ -292,6 +310,6 @@ MIT License
 
 <div align="center">
 
-Made with ❤️ using Assembly and Modern C++
+Made with Bassem Mohamed using Assembly and Modern C++
 
 </div>

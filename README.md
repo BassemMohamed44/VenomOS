@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="460" height="550" src="assets/VenomOS-3.png" alt="Venom-OS-icon"/>
+  <img width="260" height="260" src="assets/VenomOS-3.png" alt="Venom-OS-icon"/>
   <h1 align="center">VenomOS 𝐕🕷️🕸️</h1>
   <p align="center"> VenomOS is a 64-bit educational operating system built from scratch using Assembly (NASM) and Modern C++. It features a custom BIOS bootloader, Long Mode support, a freestanding kernel, interrupt handling, PS/2 keyboard driver, VGA terminal, interactive shell, and a built-in Snake game.</p>
 </div>
@@ -38,7 +38,18 @@ Everything boots directly from BIOS.
 
 </div>
 
----
+# Screenshots
+### Booting <br>
+<img src="assets/Screenshot-1.png" alt="booting"  width="800">
+
+### VenomOS <br>
+<img src="assets/Screenshot-2.png" alt="venomos"  width="800">
+
+### Commands <br>
+<img src="assets/Screenshot-3.png" alt="commands"  width="800">
+
+### Snake <br>
+<img src="assets/Screenshot-4.png" alt="snake"  width="800">
 
 # Features
 

@@ -110,8 +110,7 @@ namespace keyboard
 
 void init()
 {
-    // Do not rely on the BIOS controller configuration. Enable IRQ1 and
-    // scan-code translation explicitly before enabling the keyboard port.
+    
     if (write_controller_command(CONTROLLER_READ_CONFIG) && wait_for_output_full()) {
         uint8_t config = io::inb(DATA_PORT);
         config |= CONFIG_FIRST_PORT_INTERRUPT | CONFIG_TRANSLATION;

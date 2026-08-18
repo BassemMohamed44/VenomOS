@@ -1,8 +1,3 @@
-; 64-bit interrupt entry stubs. Every vector has an IDT gate so unexpected
-; CPU exceptions and future hardware IRQs return safely instead of executing
-; arbitrary memory. CPU exceptions that do not push an error code receive a
-; synthetic zero to give C++ a uniform (vector, error_code) interface.
-
 BITS 64
 
 global isr_stub_table
@@ -49,12 +44,10 @@ isr_common:
     push r13
     push r14
     push r15
-
-    ; The 15 saved registers occupy 120 bytes. Reserve eight more bytes so
-    ; the C++ call obeys the System V x86-64 stack alignment requirement.
+    
     sub rsp, 8
-    mov rdi, [rsp + 128]    ; vector
-    mov rsi, [rsp + 136]    ; CPU or synthetic error code
+    
+    lea rdi, [rsp + 8]
     call interrupt_dispatch
     add rsp, 8
 

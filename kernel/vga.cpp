@@ -1,6 +1,3 @@
-// ============================================================
-// vga.cpp 
-// ============================================================
 #include "vga.hpp"
 #include "../include/io.hpp"
 
@@ -11,10 +8,6 @@ namespace {
 constexpr size_t VGA_WIDTH  = 80;
 constexpr size_t VGA_HEIGHT = 25;
 
-// The VGA text-mode framebuffer. Each entry is 16 bits:
-// low byte = ASCII character, high byte = color attribute.
-// This address is fixed by the VGA hardware standard, not
-// something we chose.
 uint16_t* const vga_buffer = reinterpret_cast<uint16_t*>(0xB8000);
 
 size_t   cursor_row = 0;
@@ -30,22 +23,17 @@ constexpr uint16_t make_entry(char c, uint8_t color) {
            (static_cast<uint16_t>(color) << 8);
 }
 
-// Moves the blinking hardware cursor (not just where we track it
-// in software) to the given row/column, via the VGA CRT controller
-// registers at I/O ports 0x3D4 (index) / 0x3D5 (data).
+
 void update_hardware_cursor() {
     uint16_t position = static_cast<uint16_t>(cursor_row * VGA_WIDTH + cursor_col);
 
-    io::outb(0x3D4, 0x0F);                              // low byte index
+    io::outb(0x3D4, 0x0F);                             
     io::outb(0x3D5, static_cast<uint8_t>(position & 0xFF));
-    io::outb(0x3D4, 0x0E);                              // high byte index
+    io::outb(0x3D4, 0x0E);                        
     io::outb(0x3D5, static_cast<uint8_t>((position >> 8) & 0xFF));
 }
 
-// Shifts every row up by one and blanks the final row - called
-// when output reaches the bottom of the screen instead of just
-// letting it run off (which would corrupt whatever memory follows
-// the framebuffer).
+
 void scroll() {
     for (size_t row = 1; row < VGA_HEIGHT; ++row) {
         for (size_t col = 0; col < VGA_WIDTH; ++col) {
@@ -59,7 +47,7 @@ void scroll() {
     cursor_col = 0;
 }
 
-} // namespace
+} 
 
 void init() {
     current_color = make_color(Color::LightGrey, Color::Black);
@@ -128,4 +116,9 @@ void print_colored(const char* str, Color fg, Color bg) {
     current_color = saved_color;
 }
 
-} // namespace vga
+void put_char_at(size_t row, size_t col, char c, Color fg, Color bg) {
+    if (row >= VGA_HEIGHT || col >= VGA_WIDTH) return;
+    vga_buffer[row * VGA_WIDTH + col] = make_entry(c, make_color(fg, bg));
+}
+
+}

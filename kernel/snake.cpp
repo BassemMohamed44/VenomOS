@@ -44,7 +44,7 @@ void spawn_food() {
 
 void render() {
     vga::clear(vga::Color::LightGrey, vga::Color::Black);
-    vga::set_color(vga::Color::LightRed, vga::Color::Black);
+    vga::set_color(vga::Color::LightGreen, vga::Color::Black);
     vga::print("VenomOS Snake  |  Arrow keys: move  |  Esc: exit\n");
 
     for (unsigned int y = 0; y <= BOARD_HEIGHT + 1; ++y) {
@@ -57,7 +57,7 @@ void render() {
             } else {
                 for (unsigned int index = 0; index < length; ++index) {
                     if (body[index].x == static_cast<int>(x) && body[index].y == static_cast<int>(y)) {
-                        character = index == 0 ? '@' : 'O';
+                        character = index == 0 ? '@' : 'o';
                         break;
                     }
                 }
@@ -75,7 +75,7 @@ bool is_opposite(Direction first, Direction second) {
            (first == Direction::Right && second == Direction::Left);
 }
 
-} // namespace
+}
 
 namespace snake {
 
@@ -139,4 +139,4 @@ bool tick() {
     return true;
 }
 
-} // namespace snake
+}

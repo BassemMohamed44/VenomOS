@@ -1,43 +1,30 @@
-; ============================================================
-; print.asm
-; BIOS teletype text output routines (16-bit real mode only)
-; ============================================================
-
-; print_string
-; Prints a null-terminated string using BIOS teletype (int 10h, ah=0eh)
-; Input : DS:SI -> pointer to null-terminated string
-; Clobbers: none (all registers preserved)
 print_string:
     pusha
-    mov ah, 0x0E        ; BIOS teletype output function
+    mov ah, 0x0E      
 .loop:
-    lodsb               ; AL = [DS:SI], SI++
+    lodsb               
     cmp al, 0
     je .done
-    int 0x10            ; print character in AL
+    int 0x10           
     jmp .loop
 .done:
     popa
     ret
 
-; print_hex
-; Prints the byte in DL as two hexadecimal digits (e.g. 0x1B -> "1B")
-; Input : DL = byte to print
-; Clobbers: none (all registers preserved)
+
 print_hex:
     pusha
     mov al, dl
     mov cl, 4
-    shr al, cl          ; high nibble
+    shr al, cl    
     call print_hex_digit
     mov al, dl
-    and al, 0x0F         ; low nibble
+    and al, 0x0F     
     call print_hex_digit
     popa
     ret
 
-; print_hex_digit (internal helper)
-; Input: AL = value 0-15
+
 print_hex_digit:
     cmp al, 0x0A
     jl .is_digit

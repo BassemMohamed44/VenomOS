@@ -1,11 +1,3 @@
-// ============================================================
-// io.hpp
-//
-// Thin wrappers around the x86 IN/OUT instructions. These talk
-// directly to hardware device registers (as opposed to memory) -
-// used here to program the VGA hardware cursor. Kept header-only
-// and inline since there is no libc/runtime to link against.
-// ============================================================
 #pragma once
 
 #include "stdint.hpp"
@@ -23,4 +15,14 @@ inline uint8_t inb(uint16_t port) {
     return result;
 }
 
-} // namespace io
+inline void outw(uint16_t port, uint16_t value) {
+    asm volatile("outw %0, %1" : : "a"(value), "Nd"(port));
+}
+
+inline uint16_t inw(uint16_t port) {
+    uint16_t result;
+    asm volatile("inw %1, %0" : "=a"(result) : "Nd"(port));
+    return result;
+}
+
+}

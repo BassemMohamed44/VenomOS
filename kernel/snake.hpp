@@ -8,4 +8,4 @@ bool active();
 void handle_key(char key);
 bool tick();
 
-} // namespace snake
+} 

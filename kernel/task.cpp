@@ -3,6 +3,7 @@
 #include "heap.hpp"
 #include "interrupts.hpp"
 #include "paging.hpp"
+#include "ring3.hpp"
 #include "scheduler.hpp"
 
 extern "C" void switch_context(uint64_t* old_rsp_out, uint64_t new_rsp);
@@ -183,6 +184,11 @@ void switch_to(Task* next) {
     if (target_cr3 != loaded_cr3) {
         write_cr3(target_cr3);
         loaded_cr3 = target_cr3;
+    }
+
+    if (next->stack_base != nullptr) {
+        uint64_t rsp0_top = reinterpret_cast<uint64_t>(next->stack_base) + TASK_STACK_SIZE;
+        ring3::set_kernel_stack(rsp0_top);
     }
 
     if (prev == nullptr) {

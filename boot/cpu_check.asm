@@ -1,5 +1,4 @@
 check_cpu_supported:
-
     pushfd
     pop eax
     mov ecx, eax
@@ -22,6 +21,8 @@ check_cpu_supported:
     cpuid
     test edx, 1 << 29
     jz .no_long_mode
+    test edx, 1 << 20
+    jz .no_nx
 
     mov eax, 1
     cpuid
@@ -38,6 +39,10 @@ check_cpu_supported:
 
 .no_long_mode:
     mov si, msg_no_long_mode
+    jmp .fail
+
+.no_nx:
+    mov si, msg_no_nx
     jmp .fail
 
 .no_pae:
@@ -59,6 +64,7 @@ check_cpu_supported:
 
 msg_no_cpuid        db "VenomOS: CPU error - CPUID instruction not supported.", 13, 10, 0
 msg_no_long_mode    db "VenomOS: CPU error - 64-bit Long Mode not supported.", 13, 10, 0
+msg_no_nx           db "VenomOS: CPU error - NX/XD bit not supported.", 13, 10, 0
 msg_no_pae          db "VenomOS: CPU error - PAE not supported.", 13, 10, 0
 msg_no_msr          db "VenomOS: CPU error - MSRs not supported.", 13, 10, 0
 msg_unsupported_halt db "VenomOS: Unsupported CPU. System halted.", 13, 10, 0

@@ -3,6 +3,7 @@ disk_load:
     mov [DISK_DRIVE_NUM], dl
 
     mov [DEST_OFFSET], bx
+    mov [DEST_SEGMENT], es
 
     mov al, cl
     xor ah, ah
@@ -34,7 +35,7 @@ disk_load:
 
     mov ax, [DEST_OFFSET]
     mov [DAP_BUFFER_OFFSET], ax
-    mov ax, es
+    mov ax, [DEST_SEGMENT]
     mov [DAP_BUFFER_SEGMENT], ax
 
     mov ax, [CURRENT_LBA]
@@ -67,6 +68,9 @@ disk_load:
     mov cx, 512
     mul cx
     add [DEST_OFFSET], ax
+    jnc .no_segment_carry
+    add word [DEST_SEGMENT], 0x1000
+.no_segment_carry:
 
     jmp .read_chunk
 
@@ -125,6 +129,7 @@ RETRY_COUNT        db 0
 DISK_DRIVE_NUM     db 0
 CURRENT_LBA        dd 0
 DEST_OFFSET        dw 0
+DEST_SEGMENT       dw 0
 
 disk_error_msg     db "Disk err: ", 0
 sectors_error_msg  db "Sector cnt err", 13, 10, 0

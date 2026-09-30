@@ -4,7 +4,7 @@ ORG 0x8000
 KERNEL_TEMP_SEGMENT equ 0x1000
 KERNEL_TEMP_OFFSET  equ 0x0000
 KERNEL_TEMP_LINEAR  equ 0x10000
-KERNEL_SECTOR_COUNT equ 128
+KERNEL_SECTOR_COUNT equ 160
 KERNEL_LOAD_ADDR    equ 0x100000
 
 STAGE2_SECTOR_COUNT equ 6
@@ -141,7 +141,7 @@ protected_mode_start:
 
     mov ecx, 0xC0000080
     rdmsr
-    or eax, 1 << 8
+    or eax, (1 << 8) | (1 << 11)
     wrmsr
 
     mov eax, cr0

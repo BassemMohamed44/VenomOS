@@ -22,7 +22,7 @@ CXXFLAGS := -ffreestanding -fno-exceptions -fno-rtti \
             -nostdlib -Wall -Wextra -std=c++17 -Wa,--noexecstack \
             -I$(INCLUDE_DIR) -I$(KERNEL_DIR)
 
-KERNEL_SECTOR_COUNT := 128
+KERNEL_SECTOR_COUNT := 160
 KERNEL_BUDGET_BYTES := $(shell echo $$(( $(KERNEL_SECTOR_COUNT) * 512 )))
 
 KERNEL_OBJS := \
@@ -39,6 +39,7 @@ KERNEL_OBJS := \
 	$(BUILD_DIR)/heap.o \
 	$(BUILD_DIR)/ring3.o \
 	$(BUILD_DIR)/user_program_blob.o \
+	$(BUILD_DIR)/stack_overflow_program_blob.o \
 	$(BUILD_DIR)/process.o \
 	$(BUILD_DIR)/demo_hello_blob.o \
 	$(BUILD_DIR)/task.o \
@@ -140,6 +141,12 @@ $(BUILD_DIR)/user_program.bin: $(KERNEL_DIR)/user_program.asm | $(BUILD_DIR)
 
 $(BUILD_DIR)/user_program_blob.o: $(KERNEL_DIR)/user_program_blob.asm $(BUILD_DIR)/user_program.bin | $(BUILD_DIR)
 	$(ASM) -f elf64 $(KERNEL_DIR)/user_program_blob.asm -o $(BUILD_DIR)/user_program_blob.o
+
+$(BUILD_DIR)/stack_overflow_program.bin: $(KERNEL_DIR)/stack_overflow_program.asm | $(BUILD_DIR)
+	$(ASM) -f bin $(KERNEL_DIR)/stack_overflow_program.asm -o $(BUILD_DIR)/stack_overflow_program.bin
+
+$(BUILD_DIR)/stack_overflow_program_blob.o: $(KERNEL_DIR)/stack_overflow_program_blob.asm $(BUILD_DIR)/stack_overflow_program.bin | $(BUILD_DIR)
+	$(ASM) -f elf64 $(KERNEL_DIR)/stack_overflow_program_blob.asm -o $(BUILD_DIR)/stack_overflow_program_blob.o
 
 $(BUILD_DIR)/process.o: $(KERNEL_DIR)/process.cpp $(KERNEL_DIR)/process.hpp $(KERNEL_DIR)/elf.hpp $(KERNEL_DIR)/fs.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/pmm.hpp $(KERNEL_DIR)/ring3.hpp $(KERNEL_DIR)/task.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/process.cpp -o $(BUILD_DIR)/process.o

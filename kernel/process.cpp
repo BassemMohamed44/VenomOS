@@ -15,10 +15,6 @@ namespace process {
 
 namespace {
 
-constexpr uintptr_t STACK_VIRT = 0x7FFFF000;
-
-constexpr uintptr_t STACK_SIZE = 4096;
-
 constexpr size_t MAX_ELF_SIZE = 64 * 1024;
 
 void print_error(const char* message) {
@@ -28,8 +24,9 @@ void print_error(const char* message) {
 }
 
 uint64_t translate_segment_flags(uint32_t p_flags) {
-    uint64_t flags = paging::PAGE_PRESENT | paging::PAGE_USER;
+    uint64_t flags = paging::PAGE_PRESENT | paging::PAGE_USER | paging::PAGE_OWNED;
     if (p_flags & elf::PF_WRITE) flags |= paging::PAGE_WRITABLE;
+    if (!(p_flags & elf::PF_EXEC)) flags |= paging::PAGE_NX;
     return flags;
 }
 
@@ -141,16 +138,20 @@ bool run(const char* filename) {
         return false;
     }
 
-    uintptr_t stack_frame = pmm::alloc_frame();
-    if (stack_frame == 0) {
-        paging::destroy_address_space(pml4);
-        print_error("Failed to allocate the process's stack (out of memory).\n");
-        return false;
+    bool stack_mapping_ok = true;
+    for (uintptr_t offset = 0; offset < STACK_SIZE && stack_mapping_ok; offset += 4096) {
+        uintptr_t stack_frame = pmm::alloc_frame();
+        if (stack_frame == 0) {
+            stack_mapping_ok = false;
+            break;
+        }
+        if (!paging::map_page_in(pml4, STACK_VIRT + offset, stack_frame,
+                paging::PAGE_PRESENT | paging::PAGE_WRITABLE | paging::PAGE_USER | paging::PAGE_OWNED | paging::PAGE_NX)) {
+            pmm::free_frame(stack_frame);
+            stack_mapping_ok = false;
+        }
     }
-    if (!paging::map_page_in(pml4, STACK_VIRT, stack_frame,
-            paging::PAGE_PRESENT | paging::PAGE_WRITABLE | paging::PAGE_USER)) {
-
-        pmm::free_frame(stack_frame);
+    if (!stack_mapping_ok) {
         paging::destroy_address_space(pml4);
         print_error("Failed to map the process's stack.\n");
         return false;

@@ -10,6 +10,5 @@ using int16_t = signed short;
 using int32_t = signed int;
 using int64_t = signed long long;
 
-
 using uintptr_t = unsigned long long;
 using intptr_t  = signed long long;

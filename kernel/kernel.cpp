@@ -74,6 +74,16 @@ extern "C" void kernel_main()
     heap::init();
     task::init();
 
+    vga::print("Task lifecycle self-test: ");
+    if (task::self_test()) {
+        vga::set_color(vga::Color::LightGreen, vga::Color::Black);
+        vga::print("PASS\n");
+    } else {
+        vga::set_color(vga::Color::LightRed, vga::Color::Black);
+        vga::print("FAIL\n");
+    }
+    vga::set_color(vga::Color::White, vga::Color::Black);
+
     vga::print("Ring 3 stack-selection self-test: ");
     if (ring3::self_test()) {
         vga::set_color(vga::Color::LightGreen, vga::Color::Black);

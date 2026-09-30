@@ -8,6 +8,9 @@
 extern "C" uint8_t user_program_start[];
 extern "C" uint8_t user_program_end[];
 
+extern "C" uint8_t stack_overflow_program_start[];
+extern "C" uint8_t stack_overflow_program_end[];
+
 namespace ring3 {
 
 namespace {
@@ -17,6 +20,10 @@ constexpr uintptr_t TSS_INFO_ADDR = 0x8FE0;
 constexpr uintptr_t USER_CODE_VIRT  = 0x40001000;
 constexpr uintptr_t USER_STACK_VIRT = 0x40010000;
 constexpr uintptr_t USER_STACK_SIZE = 4096;
+
+constexpr uintptr_t STACK_OVERFLOW_CODE_VIRT = 0x40021000;
+constexpr uintptr_t STACK_OVERFLOW_STACK_VIRT = 0x40030000;
+constexpr uintptr_t STACK_OVERFLOW_STACK_SIZE = 4096;
 
 constexpr size_t KERNEL_STACK_FOR_RSP0_SIZE = 8192;
 
@@ -105,7 +112,7 @@ void run_demo() {
 
     uintptr_t code_frame = pmm::alloc_frame();
     if (code_frame == 0 || !paging::map_page(USER_CODE_VIRT, code_frame,
-            paging::PAGE_PRESENT | paging::PAGE_WRITABLE | paging::PAGE_USER)) {
+            paging::PAGE_PRESENT | paging::PAGE_WRITABLE | paging::PAGE_USER | paging::PAGE_NX)) {
         vga::set_color(vga::Color::LightRed, vga::Color::Black);
         vga::print("Failed to map the user code page. Aborting.\n");
         vga::set_color(vga::Color::White, vga::Color::Black);
@@ -117,9 +124,16 @@ void run_demo() {
         dest[i] = user_program_start[i];
     }
 
+    if (!paging::protect_page(USER_CODE_VIRT, paging::PAGE_PRESENT | paging::PAGE_USER)) {
+        vga::set_color(vga::Color::LightRed, vga::Color::Black);
+        vga::print("Failed to re-protect the user code page. Aborting.\n");
+        vga::set_color(vga::Color::White, vga::Color::Black);
+        return;
+    }
+
     uintptr_t stack_frame = pmm::alloc_frame();
     if (stack_frame == 0 || !paging::map_page(USER_STACK_VIRT, stack_frame,
-            paging::PAGE_PRESENT | paging::PAGE_WRITABLE | paging::PAGE_USER)) {
+            paging::PAGE_PRESENT | paging::PAGE_WRITABLE | paging::PAGE_USER | paging::PAGE_NX)) {
         vga::set_color(vga::Color::LightRed, vga::Color::Black);
         vga::print("Failed to map the user stack page. Aborting.\n");
         vga::set_color(vga::Color::White, vga::Color::Black);
@@ -140,6 +154,48 @@ void run_demo() {
     vga::set_color(vga::Color::White, vga::Color::Black);
 
     enter(USER_CODE_VIRT, user_stack_top);
+}
+
+void run_stack_overflow_demo() {
+    setup_tss();
+
+    const size_t program_size = static_cast<size_t>(stack_overflow_program_end - stack_overflow_program_start);
+
+    uintptr_t code_frame = pmm::alloc_frame();
+    if (code_frame == 0 || !paging::map_page(STACK_OVERFLOW_CODE_VIRT, code_frame,
+            paging::PAGE_PRESENT | paging::PAGE_WRITABLE | paging::PAGE_USER | paging::PAGE_NX)) {
+        vga::set_color(vga::Color::LightRed, vga::Color::Black);
+        vga::print("Failed to map the stack-overflow demo's code page. Aborting.\n");
+        vga::set_color(vga::Color::White, vga::Color::Black);
+        return;
+    }
+
+    uint8_t* dest = reinterpret_cast<uint8_t*>(STACK_OVERFLOW_CODE_VIRT);
+    for (size_t i = 0; i < program_size; ++i) {
+        dest[i] = stack_overflow_program_start[i];
+    }
+
+    if (!paging::protect_page(STACK_OVERFLOW_CODE_VIRT, paging::PAGE_PRESENT | paging::PAGE_USER)) {
+        vga::set_color(vga::Color::LightRed, vga::Color::Black);
+        vga::print("Failed to re-protect the stack-overflow demo's code page. Aborting.\n");
+        vga::set_color(vga::Color::White, vga::Color::Black);
+        return;
+    }
+
+    uintptr_t stack_frame = pmm::alloc_frame();
+    if (stack_frame == 0 || !paging::map_page(STACK_OVERFLOW_STACK_VIRT, stack_frame,
+            paging::PAGE_PRESENT | paging::PAGE_WRITABLE | paging::PAGE_USER | paging::PAGE_NX)) {
+        vga::set_color(vga::Color::LightRed, vga::Color::Black);
+        vga::print("Failed to map the stack-overflow demo's stack page. Aborting.\n");
+        vga::set_color(vga::Color::White, vga::Color::Black);
+        return;
+    }
+
+    vga::set_color(vga::Color::LightCyan, vga::Color::Black);
+    vga::print("Entering ring 3 now - this program will deliberately overflow its stack...\n");
+    vga::set_color(vga::Color::White, vga::Color::Black);
+
+    enter(STACK_OVERFLOW_CODE_VIRT, STACK_OVERFLOW_STACK_VIRT + STACK_OVERFLOW_STACK_SIZE);
 }
 
 bool self_test() {

@@ -24,7 +24,7 @@ inline uint64_t* table_ptr(uint64_t phys_addr) {
 }
 
 uint64_t get_or_create_table(uint64_t* table, uint64_t index, uint64_t flags) {
-    const uint64_t extra_flags = flags & ~ADDR_MASK & ~PAGE_HUGE;
+    const uint64_t extra_flags = flags & ~ADDR_MASK & ~PAGE_HUGE & ~PAGE_NX;
 
     if (table[index] & PAGE_PRESENT) {
         table[index] |= (PAGE_WRITABLE | extra_flags);
@@ -43,6 +43,13 @@ uint64_t get_or_create_table(uint64_t* table, uint64_t index, uint64_t flags) {
 
 inline bool is_huge(uint64_t entry) {
     return (entry & PAGE_PRESENT) && (entry & PAGE_HUGE);
+}
+
+bool is_table_empty(uint64_t* table) {
+    for (int i = 0; i < 512; ++i) {
+        if (table[i] & PAGE_PRESENT) return false;
+    }
+    return true;
 }
 
 }
@@ -96,6 +103,50 @@ bool unmap_page(uintptr_t virt_addr) {
     uint64_t* pml4 = table_ptr(read_cr3() & ADDR_MASK);
     if (!(pml4[pml4_index] & PAGE_PRESENT)) return false;
 
+    uint64_t pdpt_phys = pml4[pml4_index] & ADDR_MASK;
+    uint64_t* pdpt = table_ptr(pdpt_phys);
+    if (!(pdpt[pdpt_index] & PAGE_PRESENT) || is_huge(pdpt[pdpt_index])) return false;
+
+    uint64_t pd_phys = pdpt[pdpt_index] & ADDR_MASK;
+    uint64_t* pd = table_ptr(pd_phys);
+    if (!(pd[pd_index] & PAGE_PRESENT) || is_huge(pd[pd_index])) return false;
+
+    uint64_t pt_phys = pd[pd_index] & ADDR_MASK;
+    uint64_t* pt = table_ptr(pt_phys);
+    if (!(pt[pt_index] & PAGE_PRESENT)) return false;
+
+    pt[pt_index] = 0;
+    invalidate_page(virt_addr);
+
+    if (is_table_empty(pt)) {
+        pd[pd_index] = 0;
+        pmm::free_frame(pt_phys);
+
+        if (is_table_empty(pd)) {
+            pdpt[pdpt_index] = 0;
+            pmm::free_frame(pd_phys);
+
+            if (is_table_empty(pdpt)) {
+                pml4[pml4_index] = 0;
+                pmm::free_frame(pdpt_phys);
+            }
+        }
+    }
+
+    return true;
+}
+
+bool protect_page(uintptr_t virt_addr, uint64_t new_flags) {
+    if (virt_addr % 4096 != 0) return false;
+
+    uint64_t pml4_index = (virt_addr >> 39) & 0x1FF;
+    uint64_t pdpt_index = (virt_addr >> 30) & 0x1FF;
+    uint64_t pd_index   = (virt_addr >> 21) & 0x1FF;
+    uint64_t pt_index   = (virt_addr >> 12) & 0x1FF;
+
+    uint64_t* pml4 = table_ptr(read_cr3() & ADDR_MASK);
+    if (!(pml4[pml4_index] & PAGE_PRESENT)) return false;
+
     uint64_t* pdpt = table_ptr(pml4[pml4_index] & ADDR_MASK);
     if (!(pdpt[pdpt_index] & PAGE_PRESENT) || is_huge(pdpt[pdpt_index])) return false;
 
@@ -105,7 +156,8 @@ bool unmap_page(uintptr_t virt_addr) {
     uint64_t* pt = table_ptr(pd[pd_index] & ADDR_MASK);
     if (!(pt[pt_index] & PAGE_PRESENT)) return false;
 
-    pt[pt_index] = 0;
+    uint64_t phys = pt[pt_index] & ADDR_MASK;
+    pt[pt_index] = phys | (new_flags & ~ADDR_MASK) | PAGE_PRESENT;
     invalidate_page(virt_addr);
     return true;
 }
@@ -151,7 +203,7 @@ void destroy_address_space(uint64_t pml4_phys) {
             uint64_t* pt = table_ptr(pd[pd_i] & ADDR_MASK);
 
             for (int pt_i = 0; pt_i < 512; ++pt_i) {
-                if (pt[pt_i] & PAGE_PRESENT) {
+                if ((pt[pt_i] & PAGE_PRESENT) && (pt[pt_i] & PAGE_OWNED)) {
                     pmm::free_frame(pt[pt_i] & ADDR_MASK);
                 }
             }
@@ -184,7 +236,42 @@ bool self_test() {
     bool unmap_ok = unmap_page(TEST_VIRT);
     pmm::free_frame(frame);
 
-    return readback_ok && unmap_ok;
+    constexpr uintptr_t NX_TEST_VIRT = 0x40001000;
+    uintptr_t nx_frame = pmm::alloc_frame();
+    if (nx_frame == 0) return false;
+
+    bool nx_ok = true;
+
+    if (!map_page(NX_TEST_VIRT, nx_frame, PAGE_PRESENT | PAGE_WRITABLE | PAGE_NX)) {
+        nx_ok = false;
+    } else {
+        uint64_t pml4_index = (NX_TEST_VIRT >> 39) & 0x1FF;
+        uint64_t pdpt_index = (NX_TEST_VIRT >> 30) & 0x1FF;
+        uint64_t pd_index   = (NX_TEST_VIRT >> 21) & 0x1FF;
+        uint64_t pt_index   = (NX_TEST_VIRT >> 12) & 0x1FF;
+
+        uint64_t* pml4 = table_ptr(read_cr3() & ADDR_MASK);
+        uint64_t* pdpt = table_ptr(pml4[pml4_index] & ADDR_MASK);
+        uint64_t* pd = table_ptr(pdpt[pdpt_index] & ADDR_MASK);
+        uint64_t* pt = table_ptr(pd[pd_index] & ADDR_MASK);
+
+        if (!(pt[pt_index] & PAGE_NX)) nx_ok = false;
+        if (pml4[pml4_index] & PAGE_NX) nx_ok = false;
+        if (pdpt[pdpt_index] & PAGE_NX) nx_ok = false;
+        if (pd[pd_index] & PAGE_NX) nx_ok = false;
+
+        if (!protect_page(NX_TEST_VIRT, PAGE_PRESENT)) {
+            nx_ok = false;
+        } else {
+            if (pt[pt_index] & PAGE_NX) nx_ok = false;
+            if (pt[pt_index] & PAGE_WRITABLE) nx_ok = false;
+        }
+
+        if (!unmap_page(NX_TEST_VIRT)) nx_ok = false;
+    }
+    pmm::free_frame(nx_frame);
+
+    return readback_ok && unmap_ok && nx_ok;
 }
 
 }

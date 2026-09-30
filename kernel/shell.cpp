@@ -137,7 +137,7 @@ void execute() {
 
     if (token_is(command, token_len, "help")) {
         vga::print("Commands: help, clear, version, whoami, snake, meminfo, memtest,\n");
-        vga::print("          usermode, tasks, ls, cat, write, rm, run, ps, wait, sleep\n");
+        vga::print("          usermode, stackoverflow, tasks, ls, cat, write, rm, run, ps, wait, sleep\n");
     } else if (token_is(command, token_len, "clear")) {
         vga::clear(vga::Color::LightGrey, vga::Color::Black);
     } else if (token_is(command, token_len, "version")) {
@@ -177,6 +177,13 @@ void execute() {
         if (task::create(&ring3::run_demo, "ring3-demo") == nullptr) {
             vga::set_color(vga::Color::LightRed, vga::Color::Black);
             vga::print("Failed to create the ring 3 demo task (out of task slots or memory).\n");
+            vga::set_color(vga::Color::White, vga::Color::Black);
+        }
+    } else if (token_is(command, token_len, "stackoverflow")) {
+        vga::print("Spawning a ring 3 task that deliberately overflows its own stack.\n");
+        if (task::create(&ring3::run_stack_overflow_demo, "stackoverflow-demo") == nullptr) {
+            vga::set_color(vga::Color::LightRed, vga::Color::Black);
+            vga::print("Failed to create the stack-overflow demo task (out of task slots or memory).\n");
             vga::set_color(vga::Color::White, vga::Color::Black);
         }
     } else if (token_is(command, token_len, "tasks")) {

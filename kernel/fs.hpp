@@ -7,14 +7,20 @@ namespace fs {
 
 constexpr size_t MAX_FILENAME = 32;
 constexpr int MAX_FILES = 64;
+constexpr int MAX_EXTENTS = 4;
+
+struct Extent {
+    uint32_t start_lba;
+    uint32_t block_count;
+} __attribute__((packed));
 
 struct FileEntry {
     char name[MAX_FILENAME];
     uint32_t size_bytes;
-    uint32_t start_lba;
-    uint32_t block_count;
+    uint8_t extent_count;
     uint8_t used;
-    uint8_t reserved[3];
+    uint8_t reserved[2];
+    Extent extents[MAX_EXTENTS];
 } __attribute__((packed));
 
 bool init();

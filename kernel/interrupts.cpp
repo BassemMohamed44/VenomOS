@@ -2,6 +2,8 @@
 
 #include "../include/io.hpp"
 #include "keyboard.hpp"
+#include "process.hpp"
+#include "ring3.hpp"
 #include "scheduler.hpp"
 #include "task.hpp"
 #include "usercopy.hpp"
@@ -23,6 +25,7 @@ constexpr uint8_t IRQ_BASE = 32;
 constexpr uint16_t KERNEL_CODE_SELECTOR = 0x18;
 
 constexpr uint64_t VECTOR_GENERAL_PROTECTION_FAULT = 13;
+constexpr uint64_t VECTOR_PAGE_FAULT = 14;
 constexpr uint64_t VECTOR_SYSCALL = 0x80;
 
 constexpr uint64_t SYS_EXIT  = 0;
@@ -121,6 +124,39 @@ void print_hex(uint64_t value) {
     }
 }
 
+[[noreturn]] void report_ring3_page_fault_and_halt(const interrupts::InterruptFrame* frame) {
+    uint64_t faulting_addr;
+    asm volatile("mov %%cr2, %0" : "=r"(faulting_addr));
+
+    uintptr_t guard_page = faulting_addr & ~static_cast<uint64_t>(0xFFF);
+    bool is_stack_guard = (guard_page == process::STACK_GUARD_VIRT) ||
+                          (guard_page == ring3::STACK_GUARD_VIRT) ||
+                          (guard_page == ring3::STACK_OVERFLOW_GUARD_VIRT);
+
+    vga::set_color(vga::Color::LightRed, vga::Color::Black);
+    if (is_stack_guard) {
+        vga::print("\n\nStack overflow detected: ring 3 code ran off the bottom of its stack\n");
+        vga::print("and hit the unmapped guard page at 0x");
+        print_hex(guard_page);
+        vga::print(".\n");
+    } else {
+        vga::print("\n\nRing 3 page fault at address 0x");
+        print_hex(faulting_addr);
+        vga::print(" (error code 0x");
+        print_hex(frame->error_code);
+        vga::print(").\n");
+    }
+    vga::set_color(vga::Color::Yellow, vga::Color::Black);
+    vga::print("Terminating the faulting task and returning control to the scheduler...\n");
+    vga::set_color(vga::Color::White, vga::Color::Black);
+
+    task::exit_current(-1);
+
+    for (;;) {
+        asm volatile("cli; hlt");
+    }
+}
+
 void handle_syscall(interrupts::InterruptFrame* frame) {
     switch (frame->rax) {
         case SYS_EXIT: {
@@ -204,6 +240,9 @@ extern "C" void interrupt_dispatch(InterruptFrame* frame) {
     if (frame->vector < IRQ_BASE) {
         if (frame->vector == VECTOR_GENERAL_PROTECTION_FAULT && (frame->cs & 0x3) == 3) {
             report_ring3_fault_and_halt(frame);
+        }
+        if (frame->vector == VECTOR_PAGE_FAULT && (frame->cs & 0x3) == 3) {
+            report_ring3_page_fault_and_halt(frame);
         }
         halt_after_exception(frame->vector, frame->error_code);
     }

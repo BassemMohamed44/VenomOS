@@ -98,6 +98,10 @@ bool validate(const uint8_t* file, size_t file_size,
             *out_error = "A PT_LOAD segment has unrecognized flag bits set.";
             return false;
         }
+        if ((phdr.p_flags & PF_WRITE) && (phdr.p_flags & PF_EXEC)) {
+            *out_error = "A PT_LOAD segment is both writable and executable (W^X violation).";
+            return false;
+        }
 
         if (phdr.p_memsz < phdr.p_filesz) {
             *out_error = "A segment's p_memsz is smaller than its p_filesz.";

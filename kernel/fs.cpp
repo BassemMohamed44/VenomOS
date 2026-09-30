@@ -8,17 +8,17 @@ namespace {
 constexpr uint32_t SUPERBLOCK_LBA = 256;
 
 constexpr uint32_t FILE_TABLE_LBA = 257;
-constexpr uint32_t FILE_TABLE_SECTORS = 6;
+constexpr uint32_t FILE_TABLE_SECTORS = 9;
 
-constexpr uint32_t BITMAP_LBA = 263;
+constexpr uint32_t BITMAP_LBA = 266;
 constexpr uint32_t BITMAP_SECTORS = 8;
 
-constexpr uint32_t DATA_START_LBA = 271;
+constexpr uint32_t DATA_START_LBA = 274;
 
 constexpr uint32_t TOTAL_DISK_SECTORS = 32768;
 constexpr uint32_t TOTAL_DATA_BLOCKS = TOTAL_DISK_SECTORS - DATA_START_LBA;
 
-static_assert(sizeof(FileEntry) == 48, "FileEntry layout drifted - FILE_TABLE_SECTORS math below assumes 48 bytes");
+static_assert(sizeof(FileEntry) == 72, "FileEntry layout drifted - FILE_TABLE_SECTORS math below assumes 72 bytes");
 static_assert(MAX_FILES * sizeof(FileEntry) <= FILE_TABLE_SECTORS * ata::SECTOR_SIZE,
               "file table no longer fits in FILE_TABLE_SECTORS");
 static_assert(TOTAL_DATA_BLOCKS <= BITMAP_SECTORS * ata::SECTOR_SIZE * 8,
@@ -35,7 +35,7 @@ struct Superblock {
     uint32_t data_start_lba;
 } __attribute__((packed));
 
-constexpr uint32_t VENOMFS_VERSION = 1;
+constexpr uint32_t VENOMFS_VERSION = 2;
 
 FileEntry file_table[MAX_FILES];
 uint8_t bitmap[BITMAP_SECTORS * ata::SECTOR_SIZE];
@@ -74,6 +74,19 @@ bool save_bitmap() {
     return ata::write_sectors(BITMAP_LBA, BITMAP_SECTORS, bitmap);
 }
 
+void rebuild_bitmap_from_file_table() {
+    for (size_t i = 0; i < sizeof(bitmap); ++i) bitmap[i] = 0;
+    for (int i = 0; i < MAX_FILES; ++i) {
+        if (!file_table[i].used) continue;
+        for (int e = 0; e < file_table[i].extent_count; ++e) {
+            uint32_t start_block = file_table[i].extents[e].start_lba - DATA_START_LBA;
+            for (uint32_t b = 0; b < file_table[i].extents[e].block_count; ++b) {
+                bit_set(start_block + b);
+            }
+        }
+    }
+}
+
 FileEntry* find(const char* name) {
     for (int i = 0; i < MAX_FILES; ++i) {
         if (file_table[i].used && name_equals(file_table[i].name, name)) {
@@ -84,15 +97,20 @@ FileEntry* find(const char* name) {
 }
 
 void free_entry(FileEntry* entry) {
-    uint32_t start_block = entry->start_lba - DATA_START_LBA;
-    for (uint32_t i = 0; i < entry->block_count; ++i) {
-        bit_clear(start_block + i);
+    for (int e = 0; e < entry->extent_count; ++e) {
+        uint32_t start_block = entry->extents[e].start_lba - DATA_START_LBA;
+        for (uint32_t i = 0; i < entry->extents[e].block_count; ++i) {
+            bit_clear(start_block + i);
+        }
     }
     entry->used = 0;
     entry->name[0] = '\0';
     entry->size_bytes = 0;
-    entry->start_lba = 0;
-    entry->block_count = 0;
+    entry->extent_count = 0;
+    for (int e = 0; e < MAX_EXTENTS; ++e) {
+        entry->extents[e].start_lba = 0;
+        entry->extents[e].block_count = 0;
+    }
 }
 
 bool find_free_run(uint32_t needed, uint32_t* out_start_block) {
@@ -118,6 +136,32 @@ bool find_free_run(uint32_t needed, uint32_t* out_start_block) {
     }
 
     return false;
+}
+
+int find_free_extents(uint32_t needed, Extent* out_extents) {
+    int count = 0;
+    uint32_t remaining = needed;
+    uint32_t block = 0;
+
+    while (block < TOTAL_DATA_BLOCKS && remaining > 0 && count < MAX_EXTENTS) {
+        if (bit_test(block)) {
+            ++block;
+            continue;
+        }
+        uint32_t run_start = block;
+        uint32_t run_length = 0;
+        while (block < TOTAL_DATA_BLOCKS && !bit_test(block) && run_length < remaining) {
+            ++run_length;
+            ++block;
+        }
+        out_extents[count].start_lba = DATA_START_LBA + run_start;
+        out_extents[count].block_count = run_length;
+        ++count;
+        remaining -= run_length;
+    }
+
+    if (remaining > 0) return 0;
+    return count;
 }
 
 bool format() {
@@ -168,7 +212,9 @@ bool init() {
     }
 
     if (!ata::read_sectors(FILE_TABLE_LBA, FILE_TABLE_SECTORS, file_table)) return false;
-    if (!ata::read_sectors(BITMAP_LBA, BITMAP_SECTORS, bitmap)) return false;
+
+    rebuild_bitmap_from_file_table();
+    if (!save_bitmap()) return false;
 
     return true;
 }
@@ -201,73 +247,110 @@ bool write(const char* name, const void* data, size_t size) {
         }
     }
     if (slot == nullptr) {
-
         save_bitmap();
         save_file_table();
         return false;
     }
 
     uint32_t blocks_needed = static_cast<uint32_t>((size + ata::SECTOR_SIZE - 1) / ata::SECTOR_SIZE);
-    uint32_t start_block = 0;
-    if (blocks_needed > 0 && !find_free_run(blocks_needed, &start_block)) {
-        save_bitmap();
-        save_file_table();
-        return false;
-    }
 
-    for (uint32_t i = 0; i < blocks_needed; ++i) {
-        bit_set(start_block + i);
-    }
+    Extent extents[MAX_EXTENTS] = {};
+    int extent_count = 0;
 
     if (blocks_needed > 0) {
-
-        const uint8_t* src = reinterpret_cast<const uint8_t*>(data);
-        uint8_t sector_buf[ata::SECTOR_SIZE];
-        for (uint32_t i = 0; i < blocks_needed; ++i) {
-            size_t offset = static_cast<size_t>(i) * ata::SECTOR_SIZE;
-            size_t remaining = size - offset;
-
-            bool sector_ok;
-            if (remaining >= ata::SECTOR_SIZE) {
-                sector_ok = ata::write_sectors(DATA_START_LBA + start_block + i, 1, src + offset);
-            } else {
-                for (size_t b = 0; b < ata::SECTOR_SIZE; ++b) {
-                    sector_buf[b] = (b < remaining) ? src[offset + b] : 0;
-                }
-                sector_ok = ata::write_sectors(DATA_START_LBA + start_block + i, 1, sector_buf);
-            }
-
-            if (!sector_ok) {
-
-                for (uint32_t j = 0; j < blocks_needed; ++j) {
-                    bit_clear(start_block + j);
-                }
+        uint32_t single_start = 0;
+        if (find_free_run(blocks_needed, &single_start)) {
+            extents[0].start_lba = DATA_START_LBA + single_start;
+            extents[0].block_count = blocks_needed;
+            extent_count = 1;
+        } else {
+            extent_count = find_free_extents(blocks_needed, extents);
+            if (extent_count == 0) {
                 save_bitmap();
                 save_file_table();
                 return false;
             }
         }
+
+        for (int e = 0; e < extent_count; ++e) {
+            uint32_t start_block = extents[e].start_lba - DATA_START_LBA;
+            for (uint32_t i = 0; i < extents[e].block_count; ++i) {
+                bit_set(start_block + i);
+            }
+        }
+    }
+
+    bool data_write_ok = true;
+    if (blocks_needed > 0) {
+        const uint8_t* src = reinterpret_cast<const uint8_t*>(data);
+        uint8_t sector_buf[ata::SECTOR_SIZE];
+        size_t offset = 0;
+
+        for (int e = 0; e < extent_count && data_write_ok; ++e) {
+            for (uint32_t i = 0; i < extents[e].block_count; ++i) {
+                size_t remaining = size - offset;
+
+                bool sector_ok;
+                if (remaining >= ata::SECTOR_SIZE) {
+                    sector_ok = ata::write_sectors(extents[e].start_lba + i, 1, src + offset);
+                } else {
+                    for (size_t b = 0; b < ata::SECTOR_SIZE; ++b) {
+                        sector_buf[b] = (b < remaining) ? src[offset + b] : 0;
+                    }
+                    sector_ok = ata::write_sectors(extents[e].start_lba + i, 1, sector_buf);
+                }
+
+                if (!sector_ok) {
+                    data_write_ok = false;
+                    break;
+                }
+                offset += ata::SECTOR_SIZE;
+            }
+        }
+    }
+
+    if (!data_write_ok) {
+        for (int e = 0; e < extent_count; ++e) {
+            uint32_t start_block = extents[e].start_lba - DATA_START_LBA;
+            for (uint32_t i = 0; i < extents[e].block_count; ++i) {
+                bit_clear(start_block + i);
+            }
+        }
+        save_bitmap();
+        save_file_table();
+        return false;
     }
 
     copy_name(slot->name, name);
     slot->size_bytes = static_cast<uint32_t>(size);
-    slot->start_lba = DATA_START_LBA + start_block;
-    slot->block_count = blocks_needed;
+    slot->extent_count = static_cast<uint8_t>(extent_count);
+    for (int e = 0; e < MAX_EXTENTS; ++e) {
+        if (e < extent_count) {
+            slot->extents[e] = extents[e];
+        } else {
+            slot->extents[e].start_lba = 0;
+            slot->extents[e].block_count = 0;
+        }
+    }
     slot->used = 1;
 
     bool table_ok = save_file_table();
     bool bitmap_ok = save_bitmap();
     if (!table_ok || !bitmap_ok) {
-
-        for (uint32_t i = 0; i < blocks_needed; ++i) {
-            bit_clear(start_block + i);
+        for (int e = 0; e < extent_count; ++e) {
+            uint32_t start_block = extents[e].start_lba - DATA_START_LBA;
+            for (uint32_t i = 0; i < extents[e].block_count; ++i) {
+                bit_clear(start_block + i);
+            }
         }
         slot->used = 0;
         slot->name[0] = '\0';
         slot->size_bytes = 0;
-        slot->start_lba = 0;
-        slot->block_count = 0;
-
+        slot->extent_count = 0;
+        for (int e = 0; e < MAX_EXTENTS; ++e) {
+            slot->extents[e].start_lba = 0;
+            slot->extents[e].block_count = 0;
+        }
         save_file_table();
         save_bitmap();
         return false;
@@ -284,25 +367,23 @@ bool read(const char* name, void* buffer, size_t buffer_capacity, size_t* out_by
     if (to_read > buffer_capacity) to_read = buffer_capacity;
 
     size_t bytes_read = 0;
+    uint8_t* dest = reinterpret_cast<uint8_t*>(buffer);
 
     if (to_read > 0) {
         uint8_t sector_buf[ata::SECTOR_SIZE];
-        uint8_t* dest = reinterpret_cast<uint8_t*>(buffer);
-        size_t remaining = to_read;
-        uint32_t lba = entry->start_lba;
 
-        while (remaining > 0) {
-
-            if (!ata::read_sectors(lba, 1, sector_buf)) {
-                if (out_bytes_read != nullptr) *out_bytes_read = bytes_read;
-                return false;
+        for (int e = 0; e < entry->extent_count && bytes_read < to_read; ++e) {
+            for (uint32_t i = 0; i < entry->extents[e].block_count && bytes_read < to_read; ++i) {
+                if (!ata::read_sectors(entry->extents[e].start_lba + i, 1, sector_buf)) {
+                    if (out_bytes_read != nullptr) *out_bytes_read = bytes_read;
+                    return false;
+                }
+                size_t remaining = to_read - bytes_read;
+                size_t chunk = remaining < ata::SECTOR_SIZE ? remaining : ata::SECTOR_SIZE;
+                for (size_t b = 0; b < chunk; ++b) dest[b] = sector_buf[b];
+                dest += chunk;
+                bytes_read += chunk;
             }
-            size_t chunk = remaining < ata::SECTOR_SIZE ? remaining : ata::SECTOR_SIZE;
-            for (size_t b = 0; b < chunk; ++b) dest[b] = sector_buf[b];
-            dest += chunk;
-            remaining -= chunk;
-            bytes_read += chunk;
-            ++lba;
         }
     }
 
@@ -320,10 +401,12 @@ bool remove(const char* name) {
     bool table_ok = save_file_table();
     bool bitmap_ok = save_bitmap();
     if (!table_ok || !bitmap_ok) {
-
         *entry = backup;
-        for (uint32_t i = 0; i < backup.block_count; ++i) {
-            bit_set((backup.start_lba - DATA_START_LBA) + i);
+        for (int e = 0; e < backup.extent_count; ++e) {
+            uint32_t start_block = backup.extents[e].start_lba - DATA_START_LBA;
+            for (uint32_t i = 0; i < backup.extents[e].block_count; ++i) {
+                bit_set(start_block + i);
+            }
         }
         return false;
     }
@@ -399,6 +482,43 @@ bool self_test() {
         if (!exists(name_ok)) ok = false;
 
         if (!remove(name_ok)) ok = false;
+    }
+
+    {
+        const char* name_frag = "__fs_selftest_fragmented__";
+
+        uint8_t bitmap_backup[sizeof(bitmap)];
+        for (size_t i = 0; i < sizeof(bitmap); ++i) bitmap_backup[i] = bitmap[i];
+
+        for (size_t i = 0; i < sizeof(bitmap); ++i) bitmap[i] = 0xFF;
+        bit_clear(10);
+        bit_clear(20);
+
+        uint8_t data[1024];
+        for (size_t i = 0; i < sizeof(data); ++i) data[i] = static_cast<uint8_t>(0x77);
+
+        bool frag_write_ok = write(name_frag, data, sizeof(data));
+        FileEntry* frag_entry = find(name_frag);
+
+        if (!frag_write_ok || frag_entry == nullptr) {
+            ok = false;
+        } else {
+            if (frag_entry->extent_count != 2) ok = false;
+
+            uint8_t readback[1024] = {};
+            size_t bytes_read = 0;
+            if (!read(name_frag, readback, sizeof(readback), &bytes_read)) ok = false;
+            if (bytes_read != sizeof(data)) ok = false;
+            for (size_t i = 0; i < sizeof(data) && ok; ++i) {
+                if (readback[i] != data[i]) ok = false;
+            }
+        }
+
+        if (exists(name_frag)) remove(name_frag);
+
+        for (size_t i = 0; i < sizeof(bitmap); ++i) bitmap[i] = bitmap_backup[i];
+        rebuild_bitmap_from_file_table();
+        save_bitmap();
     }
 
     if (exists(name_ok)) remove(name_ok);

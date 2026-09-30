@@ -12,11 +12,27 @@ namespace task {
 
 namespace {
 
-constexpr int MAX_TASKS = 8;
+constexpr int MAX_TASKS = 128;
+constexpr int PID_INDEX_BITS = 8;
+constexpr uint64_t PID_INDEX_FIELD_MASK = (1ull << PID_INDEX_BITS) - 1;
+constexpr uint64_t PID_GENERATION_MAX = ~0ull;
+
+static_assert(MAX_TASKS <= (1 << PID_INDEX_BITS) - 1, "MAX_TASKS no longer fits in PID_INDEX_BITS");
 
 Task tasks[MAX_TASKS] = {};
 int current_index = -1;
-Pid next_pid = 1;
+
+Pid make_pid(int slot_index, uint64_t generation) {
+    return (generation << PID_INDEX_BITS) | (static_cast<uint64_t>(slot_index) + 1);
+}
+
+int pid_slot_index(Pid pid) {
+    return static_cast<int>((pid & PID_INDEX_FIELD_MASK) - 1);
+}
+
+uint64_t pid_generation(Pid pid) {
+    return pid >> PID_INDEX_BITS;
+}
 
 uint64_t kernel_cr3 = 0;
 uint64_t loaded_cr3 = 0;
@@ -55,7 +71,9 @@ inline void write_cr3(uint64_t value) {
 
 Task* find_free_slot() {
     for (int i = 0; i < MAX_TASKS; ++i) {
-        if (tasks[i].state == State::Dead) return &tasks[i];
+        if (tasks[i].state == State::Dead && tasks[i].generation != PID_GENERATION_MAX) {
+            return &tasks[i];
+        }
     }
     return nullptr;
 }
@@ -135,7 +153,8 @@ Task* init_common_slot(EntryFn entry, const char* name) {
     slot->rsp = reinterpret_cast<uint64_t>(sp);
     slot->stack_base = stack;
     slot->entry = entry;
-    slot->pid = next_pid++;
+    slot->generation += 1;
+    slot->pid = make_pid(static_cast<int>(slot - tasks), slot->generation);
     Task* parent = current();
     slot->parent_pid = (parent != nullptr) ? parent->pid : NO_PID;
     slot->first_child = NO_PID;
@@ -176,7 +195,8 @@ void init() {
     tasks[0].stack_base = nullptr;
     tasks[0].entry = nullptr;
     tasks[0].state = State::Running;
-    tasks[0].pid = next_pid++;
+    tasks[0].generation += 1;
+    tasks[0].pid = make_pid(0, tasks[0].generation);
     tasks[0].parent_pid = NO_PID;
     tasks[0].first_child = NO_PID;
     tasks[0].next_sibling = NO_PID;
@@ -235,10 +255,12 @@ Task* at(int index) {
 
 Task* find_by_pid(Pid pid) {
     if (pid == NO_PID) return nullptr;
-    for (int i = 0; i < MAX_TASKS; ++i) {
-        if (tasks[i].state != State::Dead && tasks[i].pid == pid) return &tasks[i];
-    }
-    return nullptr;
+    int index = pid_slot_index(pid);
+    if (index < 0 || index >= MAX_TASKS) return nullptr;
+    Task* t = &tasks[index];
+    if (t->state == State::Dead) return nullptr;
+    if (t->pid != pid) return nullptr;
+    return t;
 }
 
 void switch_to(Task* next) {
@@ -375,6 +397,236 @@ bool wait_for_child(Pid* out_pid, int* out_exit_code) {
     for (;;) {
         asm volatile("cli; hlt");
     }
+}
+
+namespace {
+
+constexpr int LIFECYCLE_TEST_EXIT_CODE = 42;
+bool lifecycle_ran_sleep_phase = false;
+bool lifecycle_ran_block_phase = false;
+
+void lifecycle_test_child_entry() {
+    sleep_current(3);
+    lifecycle_ran_sleep_phase = true;
+    block_current();
+    lifecycle_ran_block_phase = true;
+    exit_current(LIFECYCLE_TEST_EXIT_CODE);
+}
+
+constexpr int ORPHAN_TEST_MID_EXIT_CODE = 3;
+constexpr int ORPHAN_TEST_GRANDCHILD_EXIT_CODE = 7;
+Pid orphan_test_grandchild_pid = NO_PID;
+
+void orphan_test_grandchild_entry() {
+    sleep_current(5);
+    exit_current(ORPHAN_TEST_GRANDCHILD_EXIT_CODE);
+}
+
+void orphan_test_mid_entry() {
+    Task* g = create(&orphan_test_grandchild_entry, "orphan-test-grandchild");
+    orphan_test_grandchild_pid = (g != nullptr) ? g->pid : NO_PID;
+    exit_current(ORPHAN_TEST_MID_EXIT_CODE);
+}
+
+bool child_list_contains(Task* parent, Pid target_pid) {
+    Pid p = parent->first_child;
+    while (p != NO_PID) {
+        Task* t = find_by_pid(p);
+        if (t == nullptr) return false;
+        if (t->pid == target_pid) return true;
+        p = t->next_sibling;
+    }
+    return false;
+}
+
+constexpr int TABLE_EXHAUSTION_TEST_EXIT_CODE = 55;
+
+void table_exhaustion_test_entry() {
+    exit_current(TABLE_EXHAUSTION_TEST_EXIT_CODE);
+}
+
+}
+
+bool self_test() {
+    bool ok = true;
+    Task* self = current();
+    if (self == nullptr) return false;
+
+    lifecycle_ran_sleep_phase = false;
+    lifecycle_ran_block_phase = false;
+
+    Task* child = create(&lifecycle_test_child_entry, "lifecycle-test-child");
+    if (child == nullptr) return false;
+    Pid child_pid = child->pid;
+
+    if (child->state != State::Ready) ok = false;
+    if (child->parent_pid != self->pid) ok = false;
+    if (!child_list_contains(self, child_pid)) ok = false;
+
+    int attempts = 0;
+    while (!lifecycle_ran_sleep_phase && attempts < 20) {
+        sleep_current(2);
+        ++attempts;
+    }
+    if (!lifecycle_ran_sleep_phase) ok = false;
+
+    attempts = 0;
+    while (child->state != State::Blocked && attempts < 20) {
+        sleep_current(1);
+        ++attempts;
+    }
+    if (child->state != State::Blocked) ok = false;
+
+    unblock(child_pid);
+
+    attempts = 0;
+    while (child->state != State::Zombie && attempts < 20) {
+        sleep_current(1);
+        ++attempts;
+    }
+    if (child->state != State::Zombie) ok = false;
+    if (!lifecycle_ran_block_phase) ok = false;
+    if (child->exit_code != LIFECYCLE_TEST_EXIT_CODE) ok = false;
+
+    Pid reaped_pid = NO_PID;
+    int reaped_code = 0;
+    bool reaped = wait_for_child(&reaped_pid, &reaped_code);
+    if (!reaped) ok = false;
+    if (reaped_pid != child_pid) ok = false;
+    if (reaped_code != LIFECYCLE_TEST_EXIT_CODE) ok = false;
+    if (find_by_pid(child_pid) != nullptr) ok = false;
+
+    orphan_test_grandchild_pid = NO_PID;
+    Task* mid = create(&orphan_test_mid_entry, "orphan-test-mid");
+    if (mid == nullptr) return false;
+    Pid mid_pid = mid->pid;
+
+    attempts = 0;
+    while (orphan_test_grandchild_pid == NO_PID && attempts < 20) {
+        sleep_current(1);
+        ++attempts;
+    }
+    Pid grandchild_pid = orphan_test_grandchild_pid;
+    if (grandchild_pid == NO_PID) ok = false;
+
+    Task* grandchild = nullptr;
+    attempts = 0;
+    while (attempts < 20) {
+        grandchild = find_by_pid(grandchild_pid);
+        if (grandchild != nullptr && grandchild->parent_pid == init_pid) break;
+        sleep_current(1);
+        ++attempts;
+    }
+    if (grandchild == nullptr || grandchild->parent_pid != init_pid) {
+        ok = false;
+    } else {
+        Task* init_task = find_by_pid(init_pid);
+        if (init_task == nullptr || !child_list_contains(init_task, grandchild_pid)) {
+            ok = false;
+        }
+    }
+
+    Pid mid_reaped_pid = NO_PID;
+    int mid_reaped_code = 0;
+    bool mid_reaped = false;
+    attempts = 0;
+    while (!mid_reaped && attempts < 20) {
+        mid_reaped = wait_for_child(&mid_reaped_pid, &mid_reaped_code);
+        if (!mid_reaped) sleep_current(1);
+        ++attempts;
+    }
+    if (!mid_reaped) ok = false;
+    if (mid_reaped_pid != mid_pid) ok = false;
+    if (mid_reaped_code != ORPHAN_TEST_MID_EXIT_CODE) ok = false;
+
+    attempts = 0;
+    while (find_by_pid(grandchild_pid) != nullptr && attempts < 30) {
+        sleep_current(2);
+        ++attempts;
+    }
+    if (find_by_pid(grandchild_pid) != nullptr) ok = false;
+
+    Task* filled[MAX_TASKS];
+    Pid filled_pids[MAX_TASKS];
+    int filled_count = 0;
+    bool hit_exhaustion = false;
+    for (int i = 0; i < MAX_TASKS + 1; ++i) {
+        Task* t = create(&table_exhaustion_test_entry, "exhaustion-test");
+        if (t == nullptr) {
+            hit_exhaustion = true;
+            break;
+        }
+        filled[filled_count] = t;
+        filled_pids[filled_count] = t->pid;
+        ++filled_count;
+    }
+    if (!hit_exhaustion) ok = false;
+
+    for (int i = 0; i < filled_count; ++i) {
+        for (int j = i + 1; j < filled_count; ++j) {
+            if (filled_pids[i] == filled_pids[j]) ok = false;
+        }
+    }
+
+    for (int i = 0; i < filled_count; ++i) {
+        Pid pid = NO_PID;
+        int code = 0;
+        if (!wait_for_child(&pid, &code)) ok = false;
+        if (code != TABLE_EXHAUSTION_TEST_EXIT_CODE) ok = false;
+    }
+
+    Task* recovery = create(&table_exhaustion_test_entry, "exhaustion-test-recovery");
+    if (recovery == nullptr) {
+        ok = false;
+    } else {
+        int recovery_slot = pid_slot_index(recovery->pid);
+        if (pid_generation(recovery->pid) <= 1) ok = false;
+
+        for (int i = 0; i < filled_count; ++i) {
+            if (pid_slot_index(filled_pids[i]) == recovery_slot) {
+                if (filled_pids[i] == recovery->pid) ok = false;
+                if (find_by_pid(filled_pids[i]) != nullptr) ok = false;
+                break;
+            }
+        }
+
+        Pid pid = NO_PID;
+        int code = 0;
+        attempts = 0;
+        bool recovery_reaped = false;
+        while (!recovery_reaped && attempts < 20) {
+            recovery_reaped = wait_for_child(&pid, &code);
+            if (!recovery_reaped) sleep_current(1);
+            ++attempts;
+        }
+        if (!recovery_reaped) ok = false;
+        if (code != TABLE_EXHAUSTION_TEST_EXIT_CODE) ok = false;
+    }
+
+    {
+        int poison_index = -1;
+        for (int i = 0; i < MAX_TASKS; ++i) {
+            if (tasks[i].state == State::Dead) { poison_index = i; break; }
+        }
+        if (poison_index < 0) {
+            ok = false;
+        } else {
+            uint64_t backup_generation = tasks[poison_index].generation;
+
+            Pid encoded = make_pid(poison_index, 12345);
+            if (pid_slot_index(encoded) != poison_index) ok = false;
+            if (pid_generation(encoded) != 12345) ok = false;
+
+            tasks[poison_index].generation = PID_GENERATION_MAX;
+            Task* found = find_free_slot();
+            bool skipped_exhausted_slot = (found == nullptr) || (found != &tasks[poison_index]);
+            if (!skipped_exhausted_slot) ok = false;
+
+            tasks[poison_index].generation = backup_generation;
+        }
+    }
+
+    return ok;
 }
 
 }

@@ -27,6 +27,7 @@ struct Task {
     EntryFn entry;
     State state;
     Pid pid;
+    uint64_t generation;
     Pid parent_pid;
     Pid first_child;
     Pid next_sibling;
@@ -63,5 +64,7 @@ void sleep_current(uint64_t ticks_to_sleep);
 bool wait_for_child(Pid* out_pid, int* out_exit_code);
 
 [[noreturn]] void exit_current(int exit_code);
+
+bool self_test();
 
 }

@@ -46,7 +46,8 @@ KERNEL_OBJS := \
 	$(BUILD_DIR)/task_switch_asm.o \
 	$(BUILD_DIR)/ata.o \
 	$(BUILD_DIR)/fs.o \
-	$(BUILD_DIR)/elf.o
+	$(BUILD_DIR)/elf.o \
+	$(BUILD_DIR)/usercopy.o
 
 KERNEL_ELF := $(BUILD_DIR)/kernel.elf
 KERNEL_RAW := $(BUILD_DIR)/kernel_raw.bin
@@ -80,7 +81,7 @@ $(STAGE2_BIN): $(STAGE2_SRC) $(BOOT_DIR)/print.asm $(BOOT_DIR)/a20.asm $(BOOT_DI
 $(BUILD_DIR)/kernel_entry.o: $(KERNEL_DIR)/kernel_entry.asm | $(BUILD_DIR)
 	$(ASM) -f elf64 $(KERNEL_DIR)/kernel_entry.asm -o $(BUILD_DIR)/kernel_entry.o
 
-$(BUILD_DIR)/kernel.o: $(KERNEL_DIR)/kernel.cpp $(KERNEL_DIR)/kernel.hpp $(KERNEL_DIR)/vga.hpp $(KERNEL_DIR)/keyboard.hpp $(KERNEL_DIR)/interrupts.hpp $(KERNEL_DIR)/shell.hpp $(KERNEL_DIR)/pmm.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/heap.hpp $(KERNEL_DIR)/task.hpp $(KERNEL_DIR)/ata.hpp $(KERNEL_DIR)/fs.hpp $(KERNEL_DIR)/process.hpp | $(BUILD_DIR)
+$(BUILD_DIR)/kernel.o: $(KERNEL_DIR)/kernel.cpp $(KERNEL_DIR)/kernel.hpp $(KERNEL_DIR)/vga.hpp $(KERNEL_DIR)/keyboard.hpp $(KERNEL_DIR)/interrupts.hpp $(KERNEL_DIR)/shell.hpp $(KERNEL_DIR)/pmm.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/heap.hpp $(KERNEL_DIR)/task.hpp $(KERNEL_DIR)/ata.hpp $(KERNEL_DIR)/fs.hpp $(KERNEL_DIR)/process.hpp $(KERNEL_DIR)/usercopy.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/kernel.cpp -o $(BUILD_DIR)/kernel.o
 
 $(BUILD_DIR)/vga.o: $(KERNEL_DIR)/vga.cpp $(KERNEL_DIR)/vga.hpp $(INCLUDE_DIR)/io.hpp | $(BUILD_DIR)
@@ -89,7 +90,7 @@ $(BUILD_DIR)/vga.o: $(KERNEL_DIR)/vga.cpp $(KERNEL_DIR)/vga.hpp $(INCLUDE_DIR)/i
 $(BUILD_DIR)/keyboard.o: $(KERNEL_DIR)/keyboard.cpp $(KERNEL_DIR)/keyboard.hpp $(INCLUDE_DIR)/io.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/keyboard.cpp -o $(BUILD_DIR)/keyboard.o
 
-$(BUILD_DIR)/interrupts.o: $(KERNEL_DIR)/interrupts.cpp $(KERNEL_DIR)/interrupts.hpp $(KERNEL_DIR)/keyboard.hpp $(KERNEL_DIR)/scheduler.hpp $(KERNEL_DIR)/task.hpp $(INCLUDE_DIR)/io.hpp | $(BUILD_DIR)
+$(BUILD_DIR)/interrupts.o: $(KERNEL_DIR)/interrupts.cpp $(KERNEL_DIR)/interrupts.hpp $(KERNEL_DIR)/keyboard.hpp $(KERNEL_DIR)/scheduler.hpp $(KERNEL_DIR)/task.hpp $(KERNEL_DIR)/usercopy.hpp $(INCLUDE_DIR)/io.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/interrupts.cpp -o $(BUILD_DIR)/interrupts.o
 
 $(BUILD_DIR)/interrupts_asm.o: $(KERNEL_DIR)/interrupts.asm | $(BUILD_DIR)
@@ -131,6 +132,9 @@ $(BUILD_DIR)/fs.o: $(KERNEL_DIR)/fs.cpp $(KERNEL_DIR)/fs.hpp $(KERNEL_DIR)/ata.h
 $(BUILD_DIR)/elf.o: $(KERNEL_DIR)/elf.cpp $(KERNEL_DIR)/elf.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/elf.cpp -o $(BUILD_DIR)/elf.o
 
+$(BUILD_DIR)/usercopy.o: $(KERNEL_DIR)/usercopy.cpp $(KERNEL_DIR)/usercopy.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/elf.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/usercopy.cpp -o $(BUILD_DIR)/usercopy.o
+
 $(BUILD_DIR)/user_program.bin: $(KERNEL_DIR)/user_program.asm | $(BUILD_DIR)
 	$(ASM) -f bin $(KERNEL_DIR)/user_program.asm -o $(BUILD_DIR)/user_program.bin
 
@@ -167,6 +171,7 @@ $(KERNEL_BIN): $(KERNEL_RAW)
 $(IMAGE): $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_BIN)
 	cat $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_BIN) > $(IMAGE)
 	dd if=/dev/zero bs=1 count=0 seek=16777216 of=$(IMAGE) 2>/dev/null
+
 run: $(IMAGE)
 	$(QEMU) -drive format=raw,file=$(IMAGE),if=ide -boot c
 

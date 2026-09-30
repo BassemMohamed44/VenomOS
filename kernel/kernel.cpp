@@ -7,6 +7,7 @@
 #include "ata.hpp"
 #include "fs.hpp"
 #include "process.hpp"
+#include "ring3.hpp"
 #include "shell.hpp"
 #include "task.hpp"
 #include "usercopy.hpp"
@@ -72,6 +73,17 @@ extern "C" void kernel_main()
 
     heap::init();
     task::init();
+
+    vga::print("Ring 3 stack-selection self-test: ");
+    if (ring3::self_test()) {
+        vga::set_color(vga::Color::LightGreen, vga::Color::Black);
+        vga::print("PASS\n");
+    } else {
+        vga::set_color(vga::Color::LightRed, vga::Color::Black);
+        vga::print("FAIL\n");
+    }
+    vga::set_color(vga::Color::White, vga::Color::Black);
+
     vga::print("\n");
 
     vga::print("Disk (ATA)      : ");

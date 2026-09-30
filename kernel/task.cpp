@@ -21,6 +21,28 @@ Pid next_pid = 1;
 uint64_t kernel_cr3 = 0;
 uint64_t loaded_cr3 = 0;
 
+struct PendingCleanup {
+    void* stack_base;
+    uint64_t cr3;
+    bool active;
+};
+PendingCleanup pending_cleanup = {nullptr, 0, false};
+
+void reap_pending_cleanup() {
+    if (!pending_cleanup.active) return;
+
+    asm volatile("cli");
+    void* stack_base = pending_cleanup.stack_base;
+    uint64_t cr3 = pending_cleanup.cr3;
+    pending_cleanup.active = false;
+    pending_cleanup.stack_base = nullptr;
+    pending_cleanup.cr3 = 0;
+    asm volatile("sti");
+
+    if (stack_base != nullptr) heap::kfree(stack_base);
+    if (cr3 != 0) paging::destroy_address_space(cr3);
+}
+
 inline uint64_t read_cr3() {
     uint64_t value;
     asm volatile("mov %%cr3, %0" : "=r"(value));
@@ -87,6 +109,9 @@ Task* init_common_slot(EntryFn entry, const char* name) {
 }
 
 extern "C" void task_trampoline() {
+
+    reap_pending_cleanup();
+
     Task* self = current();
     if (self != nullptr && self->entry != nullptr) {
         self->entry();
@@ -198,6 +223,8 @@ void switch_to(Task* next) {
     } else {
         switch_context(&prev->rsp, next->rsp);
     }
+
+    reap_pending_cleanup();
 }
 
 void block_current() {
@@ -255,16 +282,12 @@ bool wait_for_child(Pid* out_pid, int* out_exit_code) {
 [[noreturn]] void exit_current(int exit_code) {
     Task* self = current();
     if (self != nullptr) {
-        if (self->stack_base != nullptr) {
 
-            heap::kfree(self->stack_base);
-            self->stack_base = nullptr;
-        }
-        if (self->cr3 != 0) {
-
-            paging::destroy_address_space(self->cr3);
-            self->cr3 = 0;
-        }
+        pending_cleanup.stack_base = self->stack_base;
+        pending_cleanup.cr3 = self->cr3;
+        pending_cleanup.active = (self->stack_base != nullptr) || (self->cr3 != 0);
+        self->stack_base = nullptr;
+        self->cr3 = 0;
 
         self->exit_code = exit_code;
 

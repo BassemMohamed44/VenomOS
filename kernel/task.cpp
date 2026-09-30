@@ -66,6 +66,21 @@ Task* find_free_slot() {
     }
 }
 
+Pid init_pid = NO_PID;
+
+constexpr uint64_t INIT_IDLE_POLL_TICKS = 9;
+
+[[noreturn]] void init_entry() {
+    for (;;) {
+        Pid pid;
+        int exit_code;
+        if (wait_for_child(&pid, &exit_code)) {
+            continue;
+        }
+        sleep_current(INIT_IDLE_POLL_TICKS);
+    }
+}
+
 }
 
 extern "C" void task_trampoline();
@@ -143,6 +158,12 @@ void init() {
     Task* idle = create(&idle_entry, "idle");
     if (idle != nullptr) {
         idle->parent_pid = NO_PID;
+    }
+
+    Task* init_task = create(&init_entry, "init");
+    if (init_task != nullptr) {
+        init_task->parent_pid = NO_PID;
+        init_pid = init_task->pid;
     }
 }
 
@@ -291,13 +312,21 @@ bool wait_for_child(Pid* out_pid, int* out_exit_code) {
 
         self->exit_code = exit_code;
 
+        if (init_pid != NO_PID && self->pid != init_pid) {
+            for (int i = 0; i < MAX_TASKS; ++i) {
+                Task* child = &tasks[i];
+                if (child->state != State::Dead && child->parent_pid == self->pid) {
+                    child->parent_pid = init_pid;
+                    unblock(init_pid);
+                }
+            }
+        }
+
         bool has_live_parent = find_by_pid(self->parent_pid) != nullptr;
         if (has_live_parent) {
-
             self->state = State::Zombie;
             unblock(self->parent_pid);
         } else {
-
             self->state = State::Dead;
             self->parent_pid = NO_PID;
         }

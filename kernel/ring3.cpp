@@ -24,6 +24,15 @@ bool tss_ready = false;
 
 }
 
+void set_kernel_stack(uint64_t rsp0_top) {
+
+    auto* info = reinterpret_cast<volatile uint64_t*>(TSS_INFO_ADDR);
+    const uint64_t tss_addr = info[0];
+
+    auto* tss_bytes = reinterpret_cast<volatile uint8_t*>(tss_addr);
+    *reinterpret_cast<volatile uint64_t*>(tss_bytes + 4) = rsp0_top;
+}
+
 void setup_tss() {
     if (tss_ready) return;
 
@@ -34,9 +43,7 @@ void setup_tss() {
 
     void* rsp0_stack = heap::kmalloc(KERNEL_STACK_FOR_RSP0_SIZE);
     const uint64_t rsp0_top = reinterpret_cast<uint64_t>(rsp0_stack) + KERNEL_STACK_FOR_RSP0_SIZE;
-
-    auto* tss_bytes = reinterpret_cast<volatile uint8_t*>(tss_addr);
-    *reinterpret_cast<volatile uint64_t*>(tss_bytes + 4) = rsp0_top;
+    set_kernel_stack(rsp0_top);
 
     auto* desc = reinterpret_cast<volatile uint8_t*>(gdt_tss_addr);
     *reinterpret_cast<volatile uint16_t*>(desc + 2) = static_cast<uint16_t>(tss_addr & 0xFFFF);
@@ -133,6 +140,27 @@ void run_demo() {
     vga::set_color(vga::Color::White, vga::Color::Black);
 
     enter(USER_CODE_VIRT, user_stack_top);
+}
+
+bool self_test() {
+    setup_tss();
+
+    void* scratch = heap::kmalloc(256);
+    if (scratch == nullptr) return false;
+    uint64_t test_value = reinterpret_cast<uint64_t>(scratch) + 256;
+
+    set_kernel_stack(test_value);
+
+    auto* info = reinterpret_cast<volatile uint64_t*>(TSS_INFO_ADDR);
+    const uint64_t tss_addr = info[0];
+    auto* tss_bytes = reinterpret_cast<volatile uint8_t*>(tss_addr);
+    uint64_t readback = *reinterpret_cast<volatile uint64_t*>(tss_bytes + 4);
+
+    bool ok = (readback == test_value);
+
+    heap::kfree(scratch);
+
+    return ok;
 }
 
 }

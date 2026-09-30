@@ -135,7 +135,6 @@ $(BUILD_DIR)/elf.o: $(KERNEL_DIR)/elf.cpp $(KERNEL_DIR)/elf.hpp | $(BUILD_DIR)
 $(BUILD_DIR)/usercopy.o: $(KERNEL_DIR)/usercopy.cpp $(KERNEL_DIR)/usercopy.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/elf.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/usercopy.cpp -o $(BUILD_DIR)/usercopy.o
 
-
 $(BUILD_DIR)/user_program.bin: $(KERNEL_DIR)/user_program.asm | $(BUILD_DIR)
 	$(ASM) -f bin $(KERNEL_DIR)/user_program.asm -o $(BUILD_DIR)/user_program.bin
 

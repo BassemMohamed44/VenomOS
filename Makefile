@@ -81,7 +81,7 @@ $(STAGE2_BIN): $(STAGE2_SRC) $(BOOT_DIR)/print.asm $(BOOT_DIR)/a20.asm $(BOOT_DI
 $(BUILD_DIR)/kernel_entry.o: $(KERNEL_DIR)/kernel_entry.asm | $(BUILD_DIR)
 	$(ASM) -f elf64 $(KERNEL_DIR)/kernel_entry.asm -o $(BUILD_DIR)/kernel_entry.o
 
-$(BUILD_DIR)/kernel.o: $(KERNEL_DIR)/kernel.cpp $(KERNEL_DIR)/kernel.hpp $(KERNEL_DIR)/vga.hpp $(KERNEL_DIR)/keyboard.hpp $(KERNEL_DIR)/interrupts.hpp $(KERNEL_DIR)/shell.hpp $(KERNEL_DIR)/pmm.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/heap.hpp $(KERNEL_DIR)/task.hpp $(KERNEL_DIR)/ata.hpp $(KERNEL_DIR)/fs.hpp $(KERNEL_DIR)/process.hpp $(KERNEL_DIR)/usercopy.hpp | $(BUILD_DIR)
+$(BUILD_DIR)/kernel.o: $(KERNEL_DIR)/kernel.cpp $(KERNEL_DIR)/kernel.hpp $(KERNEL_DIR)/vga.hpp $(KERNEL_DIR)/keyboard.hpp $(KERNEL_DIR)/interrupts.hpp $(KERNEL_DIR)/shell.hpp $(KERNEL_DIR)/pmm.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/heap.hpp $(KERNEL_DIR)/task.hpp $(KERNEL_DIR)/ata.hpp $(KERNEL_DIR)/fs.hpp $(KERNEL_DIR)/process.hpp $(KERNEL_DIR)/usercopy.hpp $(KERNEL_DIR)/ring3.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/kernel.cpp -o $(BUILD_DIR)/kernel.o
 
 $(BUILD_DIR)/vga.o: $(KERNEL_DIR)/vga.cpp $(KERNEL_DIR)/vga.hpp $(INCLUDE_DIR)/io.hpp | $(BUILD_DIR)
@@ -114,7 +114,7 @@ $(BUILD_DIR)/heap.o: $(KERNEL_DIR)/heap.cpp $(KERNEL_DIR)/heap.hpp $(KERNEL_DIR)
 $(BUILD_DIR)/ring3.o: $(KERNEL_DIR)/ring3.cpp $(KERNEL_DIR)/ring3.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/pmm.hpp $(KERNEL_DIR)/heap.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/ring3.cpp -o $(BUILD_DIR)/ring3.o
 
-$(BUILD_DIR)/task.o: $(KERNEL_DIR)/task.cpp $(KERNEL_DIR)/task.hpp $(KERNEL_DIR)/heap.hpp $(KERNEL_DIR)/scheduler.hpp | $(BUILD_DIR)
+$(BUILD_DIR)/task.o: $(KERNEL_DIR)/task.cpp $(KERNEL_DIR)/task.hpp $(KERNEL_DIR)/heap.hpp $(KERNEL_DIR)/interrupts.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/ring3.hpp $(KERNEL_DIR)/scheduler.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/task.cpp -o $(BUILD_DIR)/task.o
 
 $(BUILD_DIR)/scheduler.o: $(KERNEL_DIR)/scheduler.cpp $(KERNEL_DIR)/scheduler.hpp $(KERNEL_DIR)/task.hpp | $(BUILD_DIR)
@@ -134,6 +134,7 @@ $(BUILD_DIR)/elf.o: $(KERNEL_DIR)/elf.cpp $(KERNEL_DIR)/elf.hpp | $(BUILD_DIR)
 
 $(BUILD_DIR)/usercopy.o: $(KERNEL_DIR)/usercopy.cpp $(KERNEL_DIR)/usercopy.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/elf.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/usercopy.cpp -o $(BUILD_DIR)/usercopy.o
+
 
 $(BUILD_DIR)/user_program.bin: $(KERNEL_DIR)/user_program.asm | $(BUILD_DIR)
 	$(ASM) -f bin $(KERNEL_DIR)/user_program.asm -o $(BUILD_DIR)/user_program.bin

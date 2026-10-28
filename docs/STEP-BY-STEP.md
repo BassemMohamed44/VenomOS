@@ -3,6 +3,13 @@
 An educational x86-64 operating system, built from absolute scratch
 in Assembly (boot stage) and C++ (kernel).
 
+> **How to read this file:** it is a chronological build log. Each
+> section describes the project as it was when that phase was written,
+> including limitations that later phases removed. Where later work
+> superseded a statement, the section carries a **Superseded** note.
+> For the current design see [ARCHITECTURE.md](ARCHITECTURE.md), and for
+> open work see [ROADMAP.md](ROADMAP.md).
+
 ## Status
 Phases complete: **1 (Bootloader), 2 (A20/GDT/Protected Mode → extended
 to Long Mode), 3 (C++ Kernel/VGA), 4 (Memory Manager), 5 (Interrupts/
@@ -10,8 +17,9 @@ Keyboard/Shell), Ring 3 (User Mode), Multitasking (preemptive kernel
 threads), Filesystem (VenomFS), Process Loading (isolated address
 spaces), ELF Loader (real ELF64 parsing, multi-segment), Phase A
 (hardened ELF validation), Phase B (full process lifecycle: PCB, PID/
-parent/child, real state machine, exit codes)**. Plus a bonus Snake
-game built on top of the interrupt/keyboard/VGA stack.
+parent/child, real state machine, exit codes), syscall pointer
+validation (`usercopy`), and NX enforcement for ELF segments**. Plus a
+bonus Snake game built on top of the interrupt/keyboard/VGA stack.
 
 ## What each stage/component does
 
@@ -93,6 +101,10 @@ stack, prints a boot message, loads Stage 2 off disk, jumps to it
    `RPL=3` as proof privilege separation is real, reports it, and
    halts (VenomOS has no process model yet to resume into - see
    "Honesty notes" below).
+   **Superseded:** after the Multitasking and Phase B work, a ring 3
+   `#GP` (or page fault) terminates only the faulting task with exit
+   code `-1` and returns control to the scheduler. The machine no
+   longer halts.
 
 ### Two real bugs found and fixed while building this
 - **TSS selector**: the 104-byte TSS structure lives *inside* the
@@ -172,19 +184,28 @@ timer interrupt.
    message, from the shell task resuming normally.
 
 ### Scope, stated honestly
+*(as of the original Multitasking phase; see the Superseded notes)*
 - **Single shared address space**: every task uses the same `CR3` -
   this is kernel-thread multitasking, not process isolation. A bug in
   one task's pointer arithmetic can still corrupt another task's
   memory. Separate per-task address spaces (a real `CR3` per task) is
   the natural next step, not something silently glossed over.
+  **Superseded:** Process Loading added a `cr3` field to every task.
+  Kernel threads (`task::create`) still share the kernel address
+  space, but processes (`task::create_process`) each get a private
+  PML4, and `switch_to()` reloads `CR3` when it differs.
 - **Single shared `TSS.RSP0`**: every ring 3 → ring 0 transition, from
   any task, currently lands on the same fixed kernel stack. Fine for
   one ring 3 excursion at a time (this demo); would need per-task
   `RSP0` management before multiple tasks could safely run ring 3 code
   concurrently.
+  **Superseded:** `switch_to()` now sets `TSS.RSP0` to the top of the
+  incoming task's own kernel stack on every switch.
 - No task priorities, no sleep/wake, no inter-task synchronization
   primitives (mutexes/semaphores) yet - just round-robin and
   cooperative `yield()`.
+  **Superseded in part:** sleep/wake exists (Phase B). Priorities and
+  mutexes/semaphores still do not.
 
 ## Filesystem (VenomFS) — how it works
 
@@ -207,14 +228,21 @@ timer interrupt.
    custom filesystem - not FAT/ext/anything standards-based, chosen so
    it's small enough to fully verify end-to-end rather than because
    it's how a production filesystem would be built. Flat namespace (no
-   directories), one contiguous run of sectors per file (no
-   fragmentation-chain bookkeeping), a free bitmap for reuse after
-   delete:
+   directories), a free bitmap for reuse after delete:
    - **Superblock** (LBA 256) - magic `"VNFS"`, layout info.
    - **File table** (LBA 257, 6 sectors) - 64 fixed-size entries
      (name, size, start LBA, block count, used flag).
    - **Free bitmap** (LBA 263, 8 sectors) - one bit per data block.
    - **Data region** (LBA 271 onward) - file contents.
+   - Originally each file was one contiguous run of sectors.
+
+   **Superseded:** the filesystem is now version 2 and the layout
+   above changed. Each file has up to 4 extents (runs of consecutive
+   sectors), so files no longer need one contiguous run. The file
+   table is 9 sectors starting at LBA 257 (64 entries of 72 bytes),
+   the free bitmap is 8 sectors at LBA 266, and the data region starts
+   at LBA 274 and ends at sector 32768. See the layout table in
+   [ARCHITECTURE.md](ARCHITECTURE.md#6-storage).
    - `fs::init()` checks the superblock's magic; if it doesn't match
      (a brand-new disk image), it **self-formats** automatically -
      no separate host-side `mkfs` tool needed.
@@ -320,7 +348,10 @@ script alone.
 Scope limit, documented rather than hidden: no dynamic linking/PIE
 (`ET_EXEC` only), no NX enforcement (an executable and a non-executable
 segment are mapped identically permission-wise, since `paging.cpp`
-doesn't implement the no-execute bit yet), and a 64KB cap on the ELF
+doesn't implement the no-execute bit yet - **superseded:** Stage 2 now
+sets `EFER.NXE`, `paging.hpp` has `PAGE_NX`, and the loader maps every
+segment without `PF_X` as non-executable; Phase A also rejects
+writable+executable segments), and a 64KB cap on the ELF
 file itself.
 
 ## Phase A — Hardened ELF validation
@@ -508,12 +539,14 @@ broke.
 VenomOS/
 ├── boot/
 │   ├── stage1.asm, stage2.asm, disk.asm, print.asm, a20.asm,
-│   │   gdt.asm, mmap.asm
+│   │   gdt.asm, mmap.asm, cpu_check.asm
 ├── kernel/
 │   ├── kernel_entry.asm, kernel.cpp/.hpp, vga.cpp/.hpp,
 │   │   interrupts.asm/.cpp/.hpp, keyboard.cpp/.hpp, shell.cpp/.hpp,
 │   │   snake.cpp/.hpp, pmm.cpp/.hpp, paging.cpp/.hpp, heap.cpp/.hpp,
-│   │   ring3.cpp/.hpp, user_program.asm, user_program_blob.asm,
+│   │   ring3.cpp/.hpp, usercopy.cpp/.hpp, user_program.asm,
+│   │   user_program_blob.asm, stack_overflow_program.asm,
+│   │   stack_overflow_program_blob.asm,
 │   │   task.cpp/.hpp, scheduler.cpp/.hpp, task_switch.asm,
 │   │   ata.cpp/.hpp, fs.cpp/.hpp,
 │   │   process.cpp/.hpp, elf.cpp/.hpp, demo_elf.asm,
@@ -521,6 +554,8 @@ VenomOS/
 │   │   linker.ld
 ├── include/
 │   ├── io.hpp, stdint.hpp, stddef.hpp
+├── docs/         (ARCHITECTURE.md, ROADMAP.md, STEP-BY-STEP.md)
+├── example.github/  (CI workflow, issue and PR templates)
 ├── build/        (generated, not committed)
 ├── Makefile
 └── README.md
@@ -547,7 +582,9 @@ whatever files you've created.
 20/21 - the shell stays fully usable while they run), `usermode`
 (spawns the Ring 3 demo as its own task - the shell keeps running
 immediately, and resumes normally after the demo's task is terminated
-by its deliberate fault), `ls`, `cat <file>`, `write <file> <text>`,
+by its deliberate fault), `stackoverflow` (spawns a Ring 3 task that
+overflows its stack into the guard page and is terminated), `ls`,
+`cat <file>`, `write <file> <text>`,
 `rm <file>`, `run <file>` (parses a real ELF64 executable from
 VenomFS, maps every `PT_LOAD` segment into its own isolated address
 space, and runs it as a genuine process - try `run hello.elf`),
@@ -570,9 +607,16 @@ shell task itself to sleep for real, ~18 ticks/second).
   arbitrary memory. Documented in `interrupts.cpp` as a deliberately
   scoped simplification (the only ring 3 code that exists is
   VenomOS's own demo program), not silently skipped.
+  **Superseded:** `SYS_WRITE` now copies the buffer with
+  `usercopy::copy_from_user()`, which checks that every page is present
+  and user-accessible before reading it, and rejects bad pointers with
+  `-1`. A boot self-test (`usercopy::self_test()`) covers the rejection
+  paths.
 - Multitasking is kernel-thread-only (shared address space) with a
   single shared `TSS.RSP0` - see "Scope, stated honestly" under
   Multitasking above.
+  **Superseded:** processes now have private address spaces and
+  per-task `RSP0`. Kernel threads still share the kernel address space.
 
 ## Verified (this session)
 - Full clean build with zero errors.
@@ -648,9 +692,13 @@ shell task itself to sleep for real, ~18 ticks/second).
 ## Next phase ideas (not started)
 Ring-3 processes spawning their own children (currently only the
 shell, in ring 0, can call `process::run()`), waiting for a *specific*
-PID instead of just "any child", dynamic linking/PIE support, NX
-(no-execute) enforcement now that ELF segment permissions are parsed
-but not fully applied, hardening the syscall path with real pointer
-validation, synchronization primitives (mutex/semaphore) now that
-concurrent isolated processes genuinely exist, or growing VenomFS
-toward directories and non-contiguous (chained) block allocation.
+PID instead of just "any child", dynamic linking/PIE support, more
+syscalls (`read`, file access, `getpid`), synchronization primitives
+(mutex/semaphore) now that concurrent isolated processes genuinely
+exist, a host-side tool for putting programs on the disk image, or
+growing VenomFS toward directories and chained allocation beyond
+4 extents per file.
+
+NX enforcement and syscall pointer validation, which earlier versions
+of this list named, are done. See [ROADMAP.md](ROADMAP.md) for the
+current plan.

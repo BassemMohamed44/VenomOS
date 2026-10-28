@@ -12,6 +12,7 @@
 #include "task.hpp"
 #include "usercopy.hpp"
 #include "vga.hpp"
+#include "../include/version.hpp"
 
 extern "C" uint8_t demo_hello_start[];
 extern "C" uint8_t demo_hello_end[];
@@ -43,7 +44,7 @@ extern "C" void kernel_main()
     vga::print("VenomOS Kernel: kernel_main() running in 64-bit Long Mode.\n\n");
 
     vga::set_color(vga::Color::White, vga::Color::Black);
-    vga::print("Version      : 0.2.0\n");
+    vga::print("Version      : " VENOMOS_VERSION "\n");
     vga::print("Architecture : x86_64\n");
     vga::print("Kernel       : Running\n\n");
 

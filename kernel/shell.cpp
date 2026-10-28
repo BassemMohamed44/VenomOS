@@ -8,6 +8,7 @@
 #include "snake.hpp"
 #include "task.hpp"
 #include "vga.hpp"
+#include "../include/version.hpp"
 
 namespace {
 
@@ -141,7 +142,7 @@ void execute() {
     } else if (token_is(command, token_len, "clear")) {
         vga::clear(vga::Color::LightGrey, vga::Color::Black);
     } else if (token_is(command, token_len, "version")) {
-        vga::print("VenomOS version 0.2.0 (x86_64)\n");
+        vga::print("VenomOS version " VENOMOS_VERSION " (x86_64)\n");
     } else if (token_is(command, token_len, "whoami")) {
         vga::print("desktop-venomos\\ghost user\n");
     } else if (token_is(command, token_len, "snake")) {

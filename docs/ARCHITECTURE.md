@@ -154,7 +154,7 @@ Any failure frees what was allocated and reports a specific error message.
 | Storage | `kernel/ata.*`, `kernel/fs.*` |
 | Executables | `kernel/elf.*`, `kernel/process.*`, `kernel/demo_elf.asm`, `kernel/user_link.ld` |
 | Drivers and apps | `kernel/vga.*`, `kernel/keyboard.*`, `kernel/shell.*`, `kernel/snake.*` |
-| Shared headers | `include/io.hpp`, `include/stdint.hpp`, `include/stddef.hpp` |
+| Shared headers | `include/io.hpp`, `include/stdint.hpp`, `include/stddef.hpp`, `include/version.hpp` (single version string) |
 
 ## 10. Limitations
 

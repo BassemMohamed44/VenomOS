@@ -4,7 +4,7 @@ All notable changes to VenomOS will be documented here.
 
 ---
 
-## [Unreleased]
+## [0.6.0] - 2026
 
 ### Added
 
@@ -26,11 +26,10 @@ All notable changes to VenomOS will be documented here.
 - README, `docs/ARCHITECTURE.md` and `docs/ROADMAP.md` rewritten to match the
   implemented architecture, phase status, limitations and open work
 - `docs/STEP-BY-STEP.md` now marks statements that later phases superseded
-
-### Note
-
-- The kernel banner and `version` command still report `0.2.0`; this has not
-  been reconciled with the version headings below.
+- The boot banner and the `version` command now report `0.6.0`. The version
+  string lives in one place, `include/version.hpp` (it was a hardcoded
+  `0.2.0` in two files)
+- The "file too large" message from `run` no longer says "in this phase"
 
 ---
 

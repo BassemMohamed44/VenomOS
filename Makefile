@@ -82,7 +82,7 @@ $(STAGE2_BIN): $(STAGE2_SRC) $(BOOT_DIR)/print.asm $(BOOT_DIR)/a20.asm $(BOOT_DI
 $(BUILD_DIR)/kernel_entry.o: $(KERNEL_DIR)/kernel_entry.asm | $(BUILD_DIR)
 	$(ASM) -f elf64 $(KERNEL_DIR)/kernel_entry.asm -o $(BUILD_DIR)/kernel_entry.o
 
-$(BUILD_DIR)/kernel.o: $(KERNEL_DIR)/kernel.cpp $(KERNEL_DIR)/kernel.hpp $(KERNEL_DIR)/vga.hpp $(KERNEL_DIR)/keyboard.hpp $(KERNEL_DIR)/interrupts.hpp $(KERNEL_DIR)/shell.hpp $(KERNEL_DIR)/pmm.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/heap.hpp $(KERNEL_DIR)/task.hpp $(KERNEL_DIR)/ata.hpp $(KERNEL_DIR)/fs.hpp $(KERNEL_DIR)/process.hpp $(KERNEL_DIR)/usercopy.hpp $(KERNEL_DIR)/ring3.hpp | $(BUILD_DIR)
+$(BUILD_DIR)/kernel.o: $(KERNEL_DIR)/kernel.cpp $(KERNEL_DIR)/kernel.hpp $(KERNEL_DIR)/vga.hpp $(KERNEL_DIR)/keyboard.hpp $(KERNEL_DIR)/interrupts.hpp $(KERNEL_DIR)/shell.hpp $(KERNEL_DIR)/pmm.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/heap.hpp $(KERNEL_DIR)/task.hpp $(KERNEL_DIR)/ata.hpp $(KERNEL_DIR)/fs.hpp $(KERNEL_DIR)/process.hpp $(KERNEL_DIR)/usercopy.hpp $(KERNEL_DIR)/ring3.hpp $(INCLUDE_DIR)/version.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/kernel.cpp -o $(BUILD_DIR)/kernel.o
 
 $(BUILD_DIR)/vga.o: $(KERNEL_DIR)/vga.cpp $(KERNEL_DIR)/vga.hpp $(INCLUDE_DIR)/io.hpp | $(BUILD_DIR)
@@ -97,7 +97,7 @@ $(BUILD_DIR)/interrupts.o: $(KERNEL_DIR)/interrupts.cpp $(KERNEL_DIR)/interrupts
 $(BUILD_DIR)/interrupts_asm.o: $(KERNEL_DIR)/interrupts.asm | $(BUILD_DIR)
 	$(ASM) -f elf64 $(KERNEL_DIR)/interrupts.asm -o $(BUILD_DIR)/interrupts_asm.o
 
-$(BUILD_DIR)/shell.o: $(KERNEL_DIR)/shell.cpp $(KERNEL_DIR)/shell.hpp $(KERNEL_DIR)/snake.hpp $(KERNEL_DIR)/vga.hpp $(KERNEL_DIR)/heap.hpp $(KERNEL_DIR)/pmm.hpp $(KERNEL_DIR)/ring3.hpp $(KERNEL_DIR)/task.hpp $(KERNEL_DIR)/fs.hpp $(KERNEL_DIR)/process.hpp | $(BUILD_DIR)
+$(BUILD_DIR)/shell.o: $(KERNEL_DIR)/shell.cpp $(KERNEL_DIR)/shell.hpp $(KERNEL_DIR)/snake.hpp $(KERNEL_DIR)/vga.hpp $(KERNEL_DIR)/heap.hpp $(KERNEL_DIR)/pmm.hpp $(KERNEL_DIR)/ring3.hpp $(KERNEL_DIR)/task.hpp $(KERNEL_DIR)/fs.hpp $(KERNEL_DIR)/process.hpp $(INCLUDE_DIR)/version.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/shell.cpp -o $(BUILD_DIR)/shell.o
 
 $(BUILD_DIR)/snake.o: $(KERNEL_DIR)/snake.cpp $(KERNEL_DIR)/snake.hpp $(KERNEL_DIR)/keyboard.hpp $(KERNEL_DIR)/vga.hpp | $(BUILD_DIR)

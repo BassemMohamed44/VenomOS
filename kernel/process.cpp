@@ -102,7 +102,7 @@ bool run(const char* filename) {
         return false;
     }
     if (static_cast<size_t>(size) > MAX_ELF_SIZE) {
-        print_error("File is too large to run (max 64KB in this phase).\n");
+        print_error("File is too large to run (max 64KB).\n");
         return false;
     }
 

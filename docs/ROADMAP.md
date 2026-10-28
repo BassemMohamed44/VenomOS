@@ -58,7 +58,6 @@ The status below reflects the code in the repository. Architecture details are i
 **Project hygiene**
 
 - Make the CI workflow run: move it from `example.github/` to `.github/` and install the `x86_64-elf` cross-compiler
-- Reconcile the kernel's reported version (`0.2.0`) with `CHANGELOG.md` (up to `0.5.0`)
 - Remove the duplicate `docs/step-by-step.md` (an older copy that collides with `STEP-BY-STEP.md` on case-insensitive filesystems)
 
 ## Known Limitations

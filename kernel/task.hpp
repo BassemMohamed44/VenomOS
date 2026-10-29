@@ -67,4 +67,19 @@ bool wait_for_child(Pid* out_pid, int* out_exit_code);
 
 bool self_test();
 
+int pid_slot_of(Pid pid);
+uint64_t pid_generation_of(Pid pid);
+
+// Interrupt-flag critical section: irq_save() disables interrupts and returns
+// the previous RFLAGS, irq_restore() re-enables them only if they were on.
+uint64_t irq_save();
+void irq_restore(uint64_t flags);
+
+// Scheduler stress suite (kernel/task_stress.cpp): repeated create / sleep /
+// wake / block / exit cycles, preemption fairness, slot reuse, table
+// exhaustion and resource reclamation. `full` runs more rounds and prints one
+// line per sub-test; otherwise only failures are printed. Returns true if
+// every sub-test passed.
+bool stress_test(bool full);
+
 }

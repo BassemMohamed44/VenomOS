@@ -27,6 +27,26 @@ BlockHeader* free_list_head = nullptr;
 uintptr_t heap_min = 0;
 uintptr_t heap_max = 0;
 
+// The free list is shared by every task, and the timer interrupt can switch
+// tasks at any instruction. Without this, a task preempted in the middle of
+// kmalloc() could resume after another task's kfree() (for example the one
+// that releases an exited task's stack) had rewritten the same list.
+// Single CPU, so disabling interrupts is the whole lock. It restores the
+// previous interrupt state, so it nests and is safe with interrupts already off.
+struct HeapLock {
+    uint64_t saved_flags;
+    HeapLock() {
+        asm volatile("pushfq; pop %0; cli" : "=r"(saved_flags) : : "memory");
+    }
+    ~HeapLock() {
+        if (saved_flags & (1ull << 9)) {
+            asm volatile("sti" : : : "memory");
+        }
+    }
+    HeapLock(const HeapLock&) = delete;
+    HeapLock& operator=(const HeapLock&) = delete;
+};
+
 inline size_t align_up(size_t value, size_t alignment) {
     return (value + alignment - 1) & ~(alignment - 1);
 }
@@ -119,6 +139,8 @@ void* kmalloc(size_t size) {
     if (size == 0) return nullptr;
     size = align_up(size, ALIGNMENT);
 
+    HeapLock lock;
+
     for (int attempt = 0; attempt <= MAX_GROW_ATTEMPTS; ++attempt) {
         for (BlockHeader* block = free_list_head; block != nullptr; block = block->next) {
             if (!block->free || block->size < size) continue;
@@ -149,6 +171,8 @@ void* kmalloc(size_t size) {
 
 void kfree(void* ptr) {
     if (ptr == nullptr) return;
+
+    HeapLock lock;
 
     uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
 
@@ -205,6 +229,7 @@ void kfree(void* ptr) {
 }
 
 size_t bytes_in_use() {
+    HeapLock lock;
     size_t total = 0;
     for (BlockHeader* block = free_list_head; block != nullptr; block = block->next) {
         if (!block->free) total += block->size;
@@ -213,6 +238,7 @@ size_t bytes_in_use() {
 }
 
 size_t bytes_free() {
+    HeapLock lock;
     size_t total = 0;
     for (BlockHeader* block = free_list_head; block != nullptr; block = block->next) {
         if (block->free) total += block->size;

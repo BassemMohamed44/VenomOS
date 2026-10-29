@@ -9,6 +9,19 @@ namespace {
 constexpr int TICKS_PER_SWITCH = 5;
 int tick_counter = 0;
 
+// Interrupts stay off while a task is chosen and switched to. task::switch_to()
+// updates current() before switch_context() swaps stacks; a timer tick in that
+// gap would run a second switch whose "previous task" is the one that has not
+// started yet, overwriting the stack pointer saved for it. The previous
+// interrupt state is restored from this task's own stack when it is resumed.
+struct IrqGuard {
+    uint64_t flags;
+    IrqGuard() : flags(task::irq_save()) {}
+    ~IrqGuard() { task::irq_restore(flags); }
+    IrqGuard(const IrqGuard&) = delete;
+    IrqGuard& operator=(const IrqGuard&) = delete;
+};
+
 int index_of(task::Task* candidate) {
     for (int i = 0; i < task::capacity(); ++i) {
         if (task::at(i) == candidate) return i;
@@ -37,6 +50,7 @@ void tick() {
 }
 
 void reschedule() {
+    IrqGuard guard;
     task::Task* current = task::current();
     int start = index_of(current);
     if (start < 0) start = 0;

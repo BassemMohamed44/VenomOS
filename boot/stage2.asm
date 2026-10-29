@@ -132,6 +132,17 @@ protected_mode_start:
     add edi, 8
     loop .fill_page_directory
 
+    ; W^X for the kernel's identity map: only the first 2 MiB (kernel image,
+    ; boot data) stays executable. Everything above - the heap, task stacks,
+    ; page tables and all user frames - is mapped no-execute. EFER.NXE is set
+    ; below, before paging is enabled, so bit 63 is valid when it is first read.
+    mov edi, PD_ADDR + 8
+    mov ecx, 511
+.mark_pd_nx:
+    mov dword [edi + 4], 0x80000000
+    add edi, 8
+    loop .mark_pd_nx
+
     mov eax, cr4
     or eax, 1 << 5
     mov cr4, eax

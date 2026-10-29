@@ -22,6 +22,13 @@ uint64_t create_address_space();
 
 void destroy_address_space(uint64_t pml4_phys);
 
+// True when EFER.NXE is set, i.e. the CPU honours PAGE_NX.
+bool nx_enabled();
+
+// Counts present pages in the user half of an address space that are both
+// writable and executable (W^X violations). 0 means the space obeys W^X.
+uint64_t count_wx_pages(uint64_t pml4_phys);
+
 bool self_test();
 
 }

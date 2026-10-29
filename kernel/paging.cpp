@@ -216,7 +216,75 @@ void destroy_address_space(uint64_t pml4_phys) {
     pmm::free_frame(pml4_phys);
 }
 
+bool nx_enabled() {
+    uint32_t lo, hi;
+    asm volatile("rdmsr" : "=a"(lo), "=d"(hi) : "c"(0xC0000080u));
+    return (lo & (1u << 11)) != 0;
+}
+
+uint64_t count_wx_pages(uint64_t pml4_phys) {
+    uint64_t violations = 0;
+    uint64_t* pml4 = table_ptr(pml4_phys);
+
+    for (int a = 0; a < 512; ++a) {
+        if (!(pml4[a] & PAGE_PRESENT)) continue;
+        uint64_t* pdpt = table_ptr(pml4[a] & ADDR_MASK);
+        for (int b = (a == 0 ? 1 : 0); b < 512; ++b) {   // slot 0/0 is the shared kernel map
+            if (!(pdpt[b] & PAGE_PRESENT)) continue;
+            if (is_huge(pdpt[b])) {
+                if ((pdpt[b] & PAGE_WRITABLE) && !(pdpt[b] & PAGE_NX)) ++violations;
+                continue;
+            }
+            uint64_t* pd = table_ptr(pdpt[b] & ADDR_MASK);
+            for (int c = 0; c < 512; ++c) {
+                if (!(pd[c] & PAGE_PRESENT)) continue;
+                if (is_huge(pd[c])) {
+                    if ((pd[c] & PAGE_WRITABLE) && !(pd[c] & PAGE_NX)) ++violations;
+                    continue;
+                }
+                uint64_t* pt = table_ptr(pd[c] & ADDR_MASK);
+                for (int d = 0; d < 512; ++d) {
+                    if (!(pt[d] & PAGE_PRESENT)) continue;
+                    if ((pt[d] & PAGE_WRITABLE) && !(pt[d] & PAGE_NX)) ++violations;
+                }
+            }
+        }
+    }
+    return violations;
+}
+
 bool self_test() {
+    if (!nx_enabled()) return false;
+
+    // The kernel identity map: the first 2 MiB (kernel image) executable,
+    // everything above (heap, stacks, frames) no-execute.
+    {
+        uint64_t* k_pml4 = table_ptr(read_cr3() & ADDR_MASK);
+        uint64_t* k_pdpt = table_ptr(k_pml4[0] & ADDR_MASK);
+        uint64_t* k_pd = table_ptr(k_pdpt[0] & ADDR_MASK);
+        if (!is_huge(k_pd[0]) || (k_pd[0] & PAGE_NX)) return false;
+        for (int i = 1; i < 512; ++i) {
+            if (!is_huge(k_pd[i]) || !(k_pd[i] & PAGE_NX)) return false;
+        }
+    }
+
+    // count_wx_pages() must see a W+X mapping and clear it once fixed.
+    {
+        uint64_t space = create_address_space();
+        if (space == 0) return false;
+        uintptr_t f = pmm::alloc_frame();
+        if (f == 0) { destroy_address_space(space); return false; }
+        constexpr uintptr_t V = 0x50000000;
+        bool ok = map_page_in(space, V, f, PAGE_PRESENT | PAGE_USER | PAGE_OWNED | PAGE_WRITABLE);
+        ok = ok && count_wx_pages(space) == 1;
+        ok = ok && map_page_in(space, V, f, PAGE_PRESENT | PAGE_USER | PAGE_OWNED | PAGE_WRITABLE | PAGE_NX);
+        ok = ok && count_wx_pages(space) == 0;
+        ok = ok && map_page_in(space, V, f, PAGE_PRESENT | PAGE_USER | PAGE_OWNED);
+        ok = ok && count_wx_pages(space) == 0;
+        destroy_address_space(space);
+        if (!ok) return false;
+    }
+
 
     constexpr uintptr_t TEST_VIRT = 0x40000000;
     constexpr uint32_t  TEST_PATTERN = 0xDEADC0DEu;

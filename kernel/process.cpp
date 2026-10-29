@@ -23,13 +23,6 @@ void print_error(const char* message) {
     vga::set_color(vga::Color::White, vga::Color::Black);
 }
 
-uint64_t translate_segment_flags(uint32_t p_flags) {
-    uint64_t flags = paging::PAGE_PRESENT | paging::PAGE_USER | paging::PAGE_OWNED;
-    if (p_flags & elf::PF_WRITE) flags |= paging::PAGE_WRITABLE;
-    if (!(p_flags & elf::PF_EXEC)) flags |= paging::PAGE_NX;
-    return flags;
-}
-
 void process_entry() {
     ring3::setup_tss();
     task::Task* self = task::current();
@@ -42,7 +35,7 @@ bool load_segments(const uint8_t* file_buffer, const elf::Elf64_Ehdr* header,
         const elf::Elf64_Phdr& phdr = phdrs[i];
         if (phdr.p_type != elf::PT_LOAD) continue;
 
-        uint64_t flags = translate_segment_flags(phdr.p_flags);
+        uint64_t flags = segment_page_flags(phdr.p_flags);
 
         uint64_t page_start = phdr.p_vaddr & ~static_cast<uint64_t>(0xFFF);
         uint64_t page_end = (phdr.p_vaddr + phdr.p_memsz + 0xFFF) & ~static_cast<uint64_t>(0xFFF);
@@ -88,6 +81,17 @@ bool load_segments(const uint8_t* file_buffer, const elf::Elf64_Ehdr* header,
     return true;
 }
 
+}
+
+uint64_t segment_page_flags(uint32_t p_flags) {
+    uint64_t flags = paging::PAGE_PRESENT | paging::PAGE_USER | paging::PAGE_OWNED;
+    if (p_flags & elf::PF_WRITE) {
+        // Writable memory is never executable, whatever the ELF asked for.
+        flags |= paging::PAGE_WRITABLE | paging::PAGE_NX;
+    } else if (!(p_flags & elf::PF_EXEC)) {
+        flags |= paging::PAGE_NX;
+    }
+    return flags;
 }
 
 bool run(const char* filename) {
@@ -157,6 +161,12 @@ bool run(const char* filename) {
         return false;
     }
 
+    if (paging::count_wx_pages(pml4) != 0) {
+        paging::destroy_address_space(pml4);
+        print_error("Refusing to run: the process image would have writable+executable pages.\n");
+        return false;
+    }
+
     if (task::create_process(&process_entry, filename, pml4,
                               header->e_entry, STACK_VIRT + STACK_SIZE) == nullptr) {
         paging::destroy_address_space(pml4);
@@ -182,6 +192,23 @@ bool self_test() {
     int passed = 0;
     int total = 0;
 
+    // Segment permissions -> page flags (PF_R/PF_W/PF_X, W^X).
+    {
+        using namespace paging;
+        const uint64_t r  = segment_page_flags(elf::PF_READ);
+        const uint64_t rw = segment_page_flags(elf::PF_READ | elf::PF_WRITE);
+        const uint64_t rx = segment_page_flags(elf::PF_READ | elf::PF_EXEC);
+        const uint64_t wx = segment_page_flags(elf::PF_READ | elf::PF_WRITE | elf::PF_EXEC);
+        const bool ok =
+            (r  & PAGE_NX) && !(r  & PAGE_WRITABLE) &&
+            (rw & PAGE_NX) &&  (rw & PAGE_WRITABLE) &&
+            !(rx & PAGE_NX) && !(rx & PAGE_WRITABLE) &&
+            ((wx & PAGE_WRITABLE) ? (wx & PAGE_NX) != 0 : true) &&
+            (r & PAGE_USER) && (rx & PAGE_USER);
+        ++total;
+        if (ok) ++passed;
+    }
+
     ++total;
     if (elf::validate(buf, total_size, &h, &p, &n, &err)) {
         ++passed;
@@ -197,6 +224,15 @@ bool self_test() {
             if (first_load == -1) first_load = i;
             else if (second_load == -1) second_load = i;
         }
+    }
+
+    // A PT_LOAD segment that is both writable and executable must be rejected.
+    if (first_load != -1) {
+        auto* wx_phdr = reinterpret_cast<elf::Elf64_Phdr*>(buf + phoff + static_cast<size_t>(first_load) * sizeof(elf::Elf64_Phdr));
+        for (size_t i = 0; i < total_size; ++i) buf[i] = demo_hello_start[i];
+        wx_phdr->p_flags = elf::PF_READ | elf::PF_WRITE | elf::PF_EXEC;
+        ++total;
+        if (!elf::validate(buf, total_size, &h, &p, &n, &err)) ++passed;
     }
 
     for (size_t i = 0; i < total_size; ++i) buf[i] = demo_hello_start[i];

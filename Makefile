@@ -22,7 +22,7 @@ CXXFLAGS := -ffreestanding -fno-exceptions -fno-rtti \
             -nostdlib -Wall -Wextra -std=c++17 -Wa,--noexecstack \
             -I$(INCLUDE_DIR) -I$(KERNEL_DIR)
 
-KERNEL_SECTOR_COUNT := 160
+KERNEL_SECTOR_COUNT := 192
 KERNEL_BUDGET_BYTES := $(shell echo $$(( $(KERNEL_SECTOR_COUNT) * 512 )))
 
 KERNEL_OBJS := \
@@ -44,6 +44,7 @@ KERNEL_OBJS := \
 	$(BUILD_DIR)/demo_hello_blob.o \
 	$(BUILD_DIR)/task.o \
 	$(BUILD_DIR)/scheduler.o \
+	$(BUILD_DIR)/task_stress.o \
 	$(BUILD_DIR)/task_switch_asm.o \
 	$(BUILD_DIR)/ata.o \
 	$(BUILD_DIR)/fs.o \
@@ -117,6 +118,9 @@ $(BUILD_DIR)/ring3.o: $(KERNEL_DIR)/ring3.cpp $(KERNEL_DIR)/ring3.hpp $(KERNEL_D
 
 $(BUILD_DIR)/task.o: $(KERNEL_DIR)/task.cpp $(KERNEL_DIR)/task.hpp $(KERNEL_DIR)/heap.hpp $(KERNEL_DIR)/interrupts.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/ring3.hpp $(KERNEL_DIR)/scheduler.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/task.cpp -o $(BUILD_DIR)/task.o
+
+$(BUILD_DIR)/task_stress.o: $(KERNEL_DIR)/task_stress.cpp $(KERNEL_DIR)/task.hpp $(KERNEL_DIR)/heap.hpp $(KERNEL_DIR)/interrupts.hpp $(KERNEL_DIR)/paging.hpp $(KERNEL_DIR)/pmm.hpp $(KERNEL_DIR)/scheduler.hpp $(KERNEL_DIR)/vga.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/task_stress.cpp -o $(BUILD_DIR)/task_stress.o
 
 $(BUILD_DIR)/scheduler.o: $(KERNEL_DIR)/scheduler.cpp $(KERNEL_DIR)/scheduler.hpp $(KERNEL_DIR)/task.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/scheduler.cpp -o $(BUILD_DIR)/scheduler.o

@@ -137,7 +137,8 @@ void execute() {
 
     if (token_is(command, token_len, "help")) {
         vga::print("Commands: help, clear, version, whoami, snake, meminfo, memtest,\n");
-        vga::print("          usermode, stackoverflow, tasks, ls, cat, write, rm, run, ps, wait, sleep\n");
+        vga::print("          usermode, stackoverflow, tasks, ls, cat, write, rm, run, ps, wait, sleep,\n");
+        vga::print("          stress [full]\n");
     } else if (token_is(command, token_len, "clear")) {
         vga::clear(vga::Color::LightGrey, vga::Color::Black);
     } else if (token_is(command, token_len, "version")) {
@@ -318,6 +319,15 @@ void execute() {
             vga::set_color(vga::Color::White, vga::Color::Black);
         } else {
             vga::print("No child processes to wait for (nothing spawned via 'run' or 'usermode' yet).\n");
+        }
+    } else if (token_is(command, token_len, "stress")) {
+        const bool full = (args[0] == 'f' && args[1] == 'u' && args[2] == 'l' && args[3] == 'l' && args[4] == '\0');
+        if (args[0] != '\0' && !full) {
+            vga::print("Usage: stress [full]   (quick run by default; 'full' runs many more rounds)\n");
+        } else {
+            vga::print("Running the scheduler stress test. The shell is busy until it finishes;\n");
+            vga::print("run it with no other tasks or processes active.\n");
+            task::stress_test(full);
         }
     } else if (token_is(command, token_len, "sleep")) {
         if (args[0] == '\0') {

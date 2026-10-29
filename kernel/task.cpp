@@ -47,13 +47,16 @@ PendingCleanup pending_cleanup = {nullptr, 0, false};
 void reap_pending_cleanup() {
     if (!pending_cleanup.active) return;
 
-    asm volatile("cli");
+    // Restore the previous interrupt state rather than forcing it on: this also
+    // runs inside the timer interrupt (right after a switch) and inside
+    // reschedule(), where interrupts must stay off.
+    const uint64_t flags = irq_save();
     void* stack_base = pending_cleanup.stack_base;
     uint64_t cr3 = pending_cleanup.cr3;
     pending_cleanup.active = false;
     pending_cleanup.stack_base = nullptr;
     pending_cleanup.cr3 = 0;
-    asm volatile("sti");
+    irq_restore(flags);
 
     if (stack_base != nullptr) heap::kfree(stack_base);
     if (cr3 != 0) paging::destroy_address_space(cr3);
@@ -241,6 +244,26 @@ Task* create_process(EntryFn entry, const char* name, uint64_t cr3,
     return slot;
 }
 
+int pid_slot_of(Pid pid) {
+    return pid_slot_index(pid);
+}
+
+uint64_t pid_generation_of(Pid pid) {
+    return pid_generation(pid);
+}
+
+uint64_t irq_save() {
+    uint64_t flags;
+    asm volatile("pushfq; pop %0; cli" : "=r"(flags) : : "memory");
+    return flags;
+}
+
+void irq_restore(uint64_t flags) {
+    if (flags & (1ull << 9)) {
+        asm volatile("sti" : : : "memory");
+    }
+}
+
 Task* current() {
     if (current_index < 0) return nullptr;
     return &tasks[current_index];
@@ -353,6 +376,12 @@ bool wait_for_child(Pid* out_pid, int* out_exit_code) {
 }
 
 [[noreturn]] void exit_current(int exit_code) {
+    // Interrupts stay off from here until we switch away. A timer tick between
+    // publishing pending_cleanup and the switch would let whichever task runs
+    // next free this task's kernel stack (and address space) while it is still
+    // executing on them. The next task restores its own saved RFLAGS.
+    asm volatile("cli" : : : "memory");
+
     Task* self = current();
     if (self != nullptr) {
 

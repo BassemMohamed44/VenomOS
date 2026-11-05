@@ -48,6 +48,7 @@ KERNEL_OBJS := \
 	$(BUILD_DIR)/task_switch_asm.o \
 	$(BUILD_DIR)/ata.o \
 	$(BUILD_DIR)/fs.o \
+	$(BUILD_DIR)/fat32.o \
 	$(BUILD_DIR)/elf.o \
 	$(BUILD_DIR)/usercopy.o
 
@@ -55,7 +56,7 @@ KERNEL_ELF := $(BUILD_DIR)/kernel.elf
 KERNEL_RAW := $(BUILD_DIR)/kernel_raw.bin
 KERNEL_BIN := $(BUILD_DIR)/kernel.bin
 
-.PHONY: all clean run run-headless check-clean
+.PHONY: all clean run run-headless check-clean test-fat32
 
 all: $(IMAGE)
 
@@ -134,6 +135,9 @@ $(BUILD_DIR)/ata.o: $(KERNEL_DIR)/ata.cpp $(KERNEL_DIR)/ata.hpp $(INCLUDE_DIR)/i
 $(BUILD_DIR)/fs.o: $(KERNEL_DIR)/fs.cpp $(KERNEL_DIR)/fs.hpp $(KERNEL_DIR)/ata.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/fs.cpp -o $(BUILD_DIR)/fs.o
 
+$(BUILD_DIR)/fat32.o: $(KERNEL_DIR)/fat32.cpp $(KERNEL_DIR)/fat32.hpp $(KERNEL_DIR)/ata.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/fat32.cpp -o $(BUILD_DIR)/fat32.o
+
 $(BUILD_DIR)/elf.o: $(KERNEL_DIR)/elf.cpp $(KERNEL_DIR)/elf.hpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $(KERNEL_DIR)/elf.cpp -o $(BUILD_DIR)/elf.o
 
@@ -179,9 +183,18 @@ $(KERNEL_BIN): $(KERNEL_RAW)
 	cp $(KERNEL_RAW) $(KERNEL_BIN)
 	truncate -s $(KERNEL_BUDGET_BYTES) $(KERNEL_BIN)
 
-$(IMAGE): $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_BIN)
+# The disk holds VenomFS in its first 16 MiB (sectors 0..32767) and a 34 MiB
+# FAT32 volume right after it (sector 32768, see fat32::DISK_VOLUME_LBA).
+FAT_IMG   := $(BUILD_DIR)/fat32.img
+FAT_FILES := $(wildcard tools/fatroot/*)
+
+$(FAT_IMG): tools/mkfat32.py $(FAT_FILES) | $(BUILD_DIR)
+	python3 tools/mkfat32.py $(FAT_IMG) 34 $(foreach f,$(FAT_FILES),$(notdir $(f))=$(f))
+
+$(IMAGE): $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_BIN) $(FAT_IMG)
 	cat $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_BIN) > $(IMAGE)
 	dd if=/dev/zero bs=1 count=0 seek=16777216 of=$(IMAGE) 2>/dev/null
+	cat $(FAT_IMG) >> $(IMAGE)
 
 run: $(IMAGE)
 	$(QEMU) -drive format=raw,file=$(IMAGE),if=ide -boot c
@@ -197,3 +210,12 @@ check-clean:
 	@bad=$$(git ls-files -- '$(BUILD_DIR)/*' '*.o' '*.img' '*.elf' '*.bin' 2>/dev/null); \
 	if [ -n "$$bad" ]; then echo "Generated files are tracked by git:"; echo "$$bad"; exit 1; fi; \
 	echo "OK: no build outputs are tracked."
+
+# Host-side test of the FAT32 driver (needs only g++ and python3, no QEMU).
+test-fat32:
+	@mkdir -p $(BUILD_DIR)/hosttest
+	printf 'Hello from a FAT32 volume!\n' > $(BUILD_DIR)/hosttest/FATTEST.TXT
+	python3 -c "print('0123456789abcdef'*200)" > $(BUILD_DIR)/hosttest/BIG.TXT
+	python3 tools/mkfat32.py $(BUILD_DIR)/hosttest/fat.img 34 --fragment FATTEST.TXT=$(BUILD_DIR)/hosttest/FATTEST.TXT BIG.TXT=$(BUILD_DIR)/hosttest/BIG.TXT DOCS/NOTES.TXT=$(BUILD_DIR)/hosttest/FATTEST.TXT
+	g++ -std=c++17 -fno-exceptions -fno-rtti -I $(KERNEL_DIR) -o $(BUILD_DIR)/hosttest/fat32_test tests/fat32_host_test.cpp $(KERNEL_DIR)/fat32.cpp
+	$(BUILD_DIR)/hosttest/fat32_test $(BUILD_DIR)/hosttest/fat.img

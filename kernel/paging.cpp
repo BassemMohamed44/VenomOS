@@ -216,6 +216,46 @@ void destroy_address_space(uint64_t pml4_phys) {
     pmm::free_frame(pml4_phys);
 }
 
+extern "C" uint8_t kernel_text_end;
+extern "C" uint8_t kernel_rodata_end;
+
+bool protect_kernel_image() {
+    uint64_t* pml4 = table_ptr(read_cr3() & ADDR_MASK);
+    if (!(pml4[0] & PAGE_PRESENT)) return false;
+    uint64_t* pdpt = table_ptr(pml4[0] & ADDR_MASK);
+    if (!(pdpt[0] & PAGE_PRESENT) || is_huge(pdpt[0])) return false;
+    uint64_t* pd = table_ptr(pdpt[0] & ADDR_MASK);
+    if (!is_huge(pd[0])) return false;               // already split
+
+    const uintptr_t text_start = 0x100000;
+    const uintptr_t text_end = reinterpret_cast<uintptr_t>(&kernel_text_end);
+    const uintptr_t rodata_end = reinterpret_cast<uintptr_t>(&kernel_rodata_end);
+    if (text_end <= text_start || rodata_end < text_end || rodata_end > 0x200000) return false;
+
+    uintptr_t frame = pmm::alloc_frame();
+    if (frame == 0) return false;
+    uint64_t* pt = table_ptr(frame);
+
+    for (uint64_t i = 0; i < 512; ++i) {
+        const uintptr_t addr = static_cast<uintptr_t>(i) * 4096;
+        uint64_t flags;
+        if (addr >= text_start && addr < text_end)        flags = PAGE_PRESENT;                              // R+X
+        else if (addr >= text_end && addr < rodata_end)   flags = PAGE_PRESENT | PAGE_NX;                    // R
+        else                                              flags = PAGE_PRESENT | PAGE_WRITABLE | PAGE_NX;    // RW
+        pt[i] = addr | flags;
+    }
+
+    asm volatile("" : : : "memory");
+    pd[0] = frame | PAGE_PRESENT | PAGE_WRITABLE;
+    asm volatile("mov %0, %%cr3" : : "r"(read_cr3()) : "memory");   // flush the old 2 MiB translation
+
+    uint64_t cr0;
+    asm volatile("mov %%cr0, %0" : "=r"(cr0));
+    cr0 |= (1ull << 16);                                              // CR0.WP
+    asm volatile("mov %0, %%cr0" : : "r"(cr0) : "memory");
+    return true;
+}
+
 bool nx_enabled() {
     uint32_t lo, hi;
     asm volatile("rdmsr" : "=a"(lo), "=d"(hi) : "c"(0xC0000080u));
@@ -262,7 +302,23 @@ bool self_test() {
         uint64_t* k_pml4 = table_ptr(read_cr3() & ADDR_MASK);
         uint64_t* k_pdpt = table_ptr(k_pml4[0] & ADDR_MASK);
         uint64_t* k_pd = table_ptr(k_pdpt[0] & ADDR_MASK);
-        if (!is_huge(k_pd[0]) || (k_pd[0] & PAGE_NX)) return false;
+        if (is_huge(k_pd[0])) {
+            if (k_pd[0] & PAGE_NX) return false;      // not split: the 2 MiB page must at least be executable
+        } else {
+            uint64_t* kpt = table_ptr(k_pd[0] & ADDR_MASK);
+            const uintptr_t text_page = 0x100000 / 4096;
+            const uintptr_t data_page = reinterpret_cast<uintptr_t>(&kernel_rodata_end) / 4096;
+            const uintptr_t ro_page = reinterpret_cast<uintptr_t>(&kernel_text_end) / 4096;
+            if (!(kpt[text_page] & PAGE_PRESENT) || (kpt[text_page] & (PAGE_WRITABLE | PAGE_NX))) return false;  // code: R+X
+            if ((kpt[ro_page] & (PAGE_WRITABLE)) || !(kpt[ro_page] & PAGE_NX)) return false;                      // rodata: R+NX
+            if (!(kpt[data_page] & PAGE_WRITABLE) || !(kpt[data_page] & PAGE_NX)) return false;                   // data: RW+NX
+            for (uint64_t i = 0; i < 512; ++i) {                                                                  // nothing is W+X
+                if ((kpt[i] & PAGE_PRESENT) && (kpt[i] & PAGE_WRITABLE) && !(kpt[i] & PAGE_NX)) return false;
+            }
+            uint64_t cr0;
+            asm volatile("mov %%cr0, %0" : "=r"(cr0));
+            if (!(cr0 & (1ull << 16))) return false;                                                              // CR0.WP
+        }
         for (int i = 1; i < 512; ++i) {
             if (!is_huge(k_pd[i]) || !(k_pd[i] & PAGE_NX)) return false;
         }

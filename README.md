@@ -225,7 +225,7 @@ Any other number returns `-1`.
 make
 ```
 
-This produces `build/venomos.img`, a 16 MiB disk image. The build fails on purpose if the Stage 1 binary is not exactly 512 bytes, Stage 2 is not exactly 3072 bytes, or the kernel outgrows its 192-sector (96 KiB) budget.
+This produces `build/venomos.img`, a 16 MiB disk image. The build fails on purpose if the Stage 1 binary is not exactly 512 bytes, Stage 2 is not exactly 3072 bytes, or the kernel outgrows its 224-sector (112 KiB) budget.
 
 **Clean, reproducible build.** Everything generated lives in `build/`, which is listed in `.gitignore` and must never be committed:
 
@@ -316,7 +316,7 @@ These describe the code as it is today.
 
 **Build and tooling**
 
-- The kernel image has a fixed 192-sector (96 KiB) budget, set in the `Makefile` and Stage 2 (the two values must match).
+- The kernel image has a fixed 224-sector (112 KiB) budget, set in the `Makefile` and Stage 2 (the two values must match).
 - The kernel and `version` command report version `0.2.0`, while `CHANGELOG.md` tracks releases up to `0.5.0`; the two have not been reconciled yet.
 - The CI workflow is stored in `example.github/workflows/build.yml`, not `.github/workflows/`, so GitHub does not run it. It also installs only `nasm`, `make` and QEMU, not the `x86_64-elf` cross-compiler the `Makefile` requires.
 - `docs/` contains two files whose names differ only by letter case (`STEP-BY-STEP.md` and `step-by-step.md`). `STEP-BY-STEP.md` is the current one; the other is an older copy, and the pair cannot be checked out together on case-insensitive filesystems such as Windows or default macOS.

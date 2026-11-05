@@ -50,6 +50,16 @@ extern "C" void kernel_main()
     pmm::init();
     vga::print("Memory Manager  : initialized (see 'meminfo' for details)\n");
 
+    vga::print("Kernel W^X        : ");
+    if (paging::protect_kernel_image()) {
+        vga::set_color(vga::Color::LightGreen, vga::Color::Black);
+        vga::print("enabled (code R+X, rodata R, data RW+NX, CR0.WP)\n");
+    } else {
+        vga::set_color(vga::Color::LightRed, vga::Color::Black);
+        vga::print("FAIL\n");
+    }
+    vga::set_color(vga::Color::White, vga::Color::Black);
+
     vga::print("Paging self-test: ");
     if (paging::self_test()) {
         vga::set_color(vga::Color::LightGreen, vga::Color::Black);

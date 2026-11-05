@@ -257,8 +257,10 @@ User programs call `int 0x80` with the number in `rax` and arguments in `rdi`, `
 | 6 | read | fd (only 0 = keyboard), buf, len (max 256) | bytes read; non-blocking, 0 if no key is waiting |
 | 7 | filesize | path | size in bytes |
 | 8 | readfile | path, buf, len (max 4096) | bytes copied |
+| 9 | spawn | path, args (space-separated string, or 0) | child pid |
+| 10 | wait | status_ptr (or 0) | pid of a finished child, -1 if none |
 
-Not yet available: blocking input, spawn/wait for user processes, and per-process file descriptors.
+`spawn` accepts a VenomFS name, a FAT32 name or `fat:NAME`; `wait` blocks until any child exits and stores its 32-bit exit code. Not yet available: blocking input and per-process file descriptors.
 
 # Run
 

@@ -165,8 +165,27 @@ bool build_initial_stack(uint8_t* window, size_t window_size,
     return true;
 }
 
+namespace {
+
+// run() and spawn_line() share static buffers (file image, stack image, argv),
+// and the spawn syscall can arrive while the shell is inside run(). Single CPU,
+// so keeping interrupts off for the whole load is the lock.
+struct LoadLock {
+    uint64_t flags;
+    LoadLock() : flags(task::irq_save()) {}
+    ~LoadLock() { task::irq_restore(flags); }
+    LoadLock(const LoadLock&) = delete;
+    LoadLock& operator=(const LoadLock&) = delete;
+};
+
+// Task::name is a bare pointer, so give every task slot a stable copy.
+char process_names[128][33];
+
+}
+
 bool run(const char* filename, int argc, const char* const* argv,
-         int envc, const char* const* envp) {
+         int envc, const char* const* envp, uint64_t* out_pid) {
+    LoadLock load_lock;
     // Where the program lives: "fat:NAME" forces the FAT32 volume; otherwise
     // VenomFS is tried first, then the FAT32 volume.
     bool from_fat = false;
@@ -267,14 +286,55 @@ bool run(const char* filename, int argc, const char* const* argv,
         return false;
     }
 
-    if (task::create_process(&process_entry, filename, pml4,
-                              header->e_entry, initial_sp) == nullptr) {
+    task::Task* created = task::create_process(&process_entry, filename, pml4,
+                                               header->e_entry, initial_sp);
+    if (created == nullptr) {
         paging::destroy_address_space(pml4);
         print_error("Failed to create a task for this process (out of task slots or memory).\n");
         return false;
     }
 
+    const int slot = task::pid_slot_of(created->pid);
+    if (slot >= 0 && slot < 128) {
+        size_t n = 0;
+        while (filename[n] != '\0' && n < 32) { process_names[slot][n] = filename[n]; ++n; }
+        process_names[slot][n] = '\0';
+        created->name = process_names[slot];
+    }
+    if (out_pid != nullptr) *out_pid = created->pid;
     return true;
+}
+
+bool spawn_line(const char* program, const char* args, uint64_t* out_pid) {
+    LoadLock load_lock;
+
+    static char text[256];
+    static const char* spawn_argv[MAX_ARGS];
+    size_t used = 0;
+    int count = 0;
+
+    while (program[used] != '\0') {
+        if (used + 1 >= sizeof(text)) return false;
+        text[used] = program[used];
+        ++used;
+    }
+    text[used++] = '\0';
+    spawn_argv[count++] = &text[0];
+
+    for (size_t i = 0; args != nullptr && args[i] != '\0';) {
+        while (args[i] == ' ') ++i;
+        if (args[i] == '\0') break;
+        if (count >= MAX_ARGS) return false;
+        spawn_argv[count++] = &text[used];
+        while (args[i] != '\0' && args[i] != ' ') {
+            if (used + 1 >= sizeof(text)) return false;
+            text[used++] = args[i++];
+        }
+        text[used++] = '\0';
+    }
+
+    static const char* spawn_env[] = { "OS=VenomOS", "SHELL=venomsh" };
+    return run(program, count, spawn_argv, 2, spawn_env, out_pid);
 }
 
 bool self_test() {

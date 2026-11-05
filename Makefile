@@ -165,6 +165,12 @@ $(BUILD_DIR)/demo_elf_obj.o: $(KERNEL_DIR)/demo_elf.asm | $(BUILD_DIR)
 $(BUILD_DIR)/demo_hello.elf: $(BUILD_DIR)/demo_elf_obj.o $(KERNEL_DIR)/user_link.ld
 	$(LD) -m elf_x86_64 -T $(KERNEL_DIR)/user_link.ld -o $(BUILD_DIR)/demo_hello.elf $(BUILD_DIR)/demo_elf_obj.o
 
+$(BUILD_DIR)/demo_spawn_obj.o: $(KERNEL_DIR)/demo_spawn.asm | $(BUILD_DIR)
+	$(ASM) -f elf64 $(KERNEL_DIR)/demo_spawn.asm -o $(BUILD_DIR)/demo_spawn_obj.o
+
+$(BUILD_DIR)/demo_spawn.elf: $(BUILD_DIR)/demo_spawn_obj.o $(KERNEL_DIR)/user_link.ld
+	$(LD) -m elf_x86_64 -T $(KERNEL_DIR)/user_link.ld -o $(BUILD_DIR)/demo_spawn.elf $(BUILD_DIR)/demo_spawn_obj.o
+
 $(BUILD_DIR)/demo_hello_blob.o: $(KERNEL_DIR)/demo_hello_blob.asm $(BUILD_DIR)/demo_hello.elf | $(BUILD_DIR)
 	$(ASM) -f elf64 $(KERNEL_DIR)/demo_hello_blob.asm -o $(BUILD_DIR)/demo_hello_blob.o
 
@@ -188,9 +194,9 @@ $(KERNEL_BIN): $(KERNEL_RAW)
 FAT_IMG   := $(BUILD_DIR)/fat32.img
 FAT_FILES := $(wildcard tools/fatroot/*)
 # Programs built by this Makefile that are also placed on the FAT32 volume.
-FAT_PROGRAMS := HELLO.ELF=$(BUILD_DIR)/demo_hello.elf
+FAT_PROGRAMS := HELLO.ELF=$(BUILD_DIR)/demo_hello.elf SPAWN.ELF=$(BUILD_DIR)/demo_spawn.elf
 
-$(FAT_IMG): tools/mkfat32.py $(FAT_FILES) $(BUILD_DIR)/demo_hello.elf | $(BUILD_DIR)
+$(FAT_IMG): tools/mkfat32.py $(FAT_FILES) $(BUILD_DIR)/demo_hello.elf $(BUILD_DIR)/demo_spawn.elf | $(BUILD_DIR)
 	python3 tools/mkfat32.py $(FAT_IMG) 34 $(foreach f,$(FAT_FILES),$(notdir $(f))=$(f)) $(FAT_PROGRAMS)
 
 $(IMAGE): $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_BIN) $(FAT_IMG)

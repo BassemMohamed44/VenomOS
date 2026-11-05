@@ -38,6 +38,8 @@ constexpr uint64_t SYS_UPTIME = 5;     // () -> timer ticks since boot
 constexpr uint64_t SYS_READ = 6;       // (fd, buf, len) -> bytes read; fd 0 = keyboard, non-blocking
 constexpr uint64_t SYS_FILESIZE = 7;   // (path) -> size in bytes, or -1
 constexpr uint64_t SYS_READFILE = 8;   // (path, buf, len) -> bytes copied (at most 4096), or -1
+constexpr uint64_t SYS_SPAWN = 9;      // (path, args or 0) -> child pid, or -1
+constexpr uint64_t SYS_WAIT = 10;      // (status_ptr or 0) -> pid of a finished child, or -1 if none
 
 constexpr uint64_t SYS_WRITE_MAX_LENGTH = 1024ull * 1024ull;
 
@@ -217,6 +219,37 @@ void handle_syscall(interrupts::InterruptFrame* frame) {
             if (!copy_user_path(static_cast<uintptr_t>(frame->rdi), name, sizeof(name))) { frame->rax = SYS_ERROR; break; }
             const int64_t size = fs::file_size(name);
             frame->rax = size < 0 ? SYS_ERROR : static_cast<uint64_t>(size);
+            break;
+        }
+        case SYS_SPAWN: {
+            char program[40];
+            if (!copy_user_path(static_cast<uintptr_t>(frame->rdi), program, sizeof(program))) { frame->rax = SYS_ERROR; break; }
+            char args[160];
+            const char* args_ptr = nullptr;
+            if (frame->rsi != 0) {
+                size_t n = 0;
+                for (; n < sizeof(args); ++n) {
+                    char c;
+                    if (!usercopy::copy_from_user(&c, reinterpret_cast<const void*>(static_cast<uintptr_t>(frame->rsi) + n), 1)) { n = sizeof(args); break; }
+                    args[n] = c;
+                    if (c == '\0') break;
+                }
+                if (n >= sizeof(args)) { frame->rax = SYS_ERROR; break; }
+                args_ptr = args;
+            }
+            uint64_t child = 0;
+            frame->rax = process::spawn_line(program, args_ptr, &child) ? child : SYS_ERROR;
+            break;
+        }
+        case SYS_WAIT: {
+            task::Pid pid = 0;
+            int code = 0;
+            if (!task::wait_for_child(&pid, &code)) { frame->rax = SYS_ERROR; break; }
+            if (frame->rdi != 0) {
+                const int32_t status = code;
+                usercopy::copy_to_user(reinterpret_cast<void*>(static_cast<uintptr_t>(frame->rdi)), &status, sizeof(status));
+            }
+            frame->rax = pid;
             break;
         }
         case SYS_READFILE: {

@@ -40,7 +40,12 @@ bool build_initial_stack(uint8_t* window, size_t window_size,
 
 // Runs an ELF file. argv[0] defaults to `filename` when argc is 0.
 bool run(const char* filename, int argc = 0, const char* const* argv = nullptr,
-         int envc = 0, const char* const* envp = nullptr);
+         int envc = 0, const char* const* envp = nullptr, uint64_t* out_pid = nullptr);
+
+// Starts `program` with the space-separated `args` (may be null) and the
+// default environment. argv[0] is the program name. Used by the shell-less
+// callers (the spawn syscall). Stores the child's PID in *out_pid.
+bool spawn_line(const char* program, const char* args, uint64_t* out_pid);
 
 bool self_test();
 

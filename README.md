@@ -236,7 +236,7 @@ make check-clean       # fails if git tracks any generated output (build/, *.o, 
 
 # FAT32 (read-only)
 
-The second part of the disk is a standard FAT32 volume, so files can be prepared on the host. Put files in `tools/fatroot/` (8.3 names) and rebuild; in the shell use `fat ls [path]` and `fat cat <path>`. The driver (`kernel/fat32.cpp`) mounts it at boot and checks `FATTEST.TXT`. Limits: read-only, 8.3 names only (long file names are skipped), 512-byte sectors, no write support, and programs still cannot be started from it (`run` uses VenomFS). `make test-fat32` runs host-side tests, including fragmented files and corrupted volumes, with only `g++` and `python3`.
+The second part of the disk is a standard FAT32 volume, so files can be prepared on the host. Put files in `tools/fatroot/` (8.3 names) and rebuild; in the shell use `fat ls [path]` and `fat cat <path>`. The driver (`kernel/fat32.cpp`) mounts it at boot and checks `FATTEST.TXT`. Limits: read-only, 8.3 names only (long file names are skipped), 512-byte sectors, no write support, and `run` can start programs from it: `run HELLO.ELF a b` (tries VenomFS first, then FAT32) or `run fat:HELLO.ELF a b` to force the FAT32 volume. `HELLO.ELF` is built into the volume by the `Makefile`. `make test-fat32` runs host-side tests, including fragmented files and corrupted volumes, with only `g++` and `python3`.
 
 # Running programs with arguments
 

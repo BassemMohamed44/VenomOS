@@ -187,9 +187,11 @@ $(KERNEL_BIN): $(KERNEL_RAW)
 # FAT32 volume right after it (sector 32768, see fat32::DISK_VOLUME_LBA).
 FAT_IMG   := $(BUILD_DIR)/fat32.img
 FAT_FILES := $(wildcard tools/fatroot/*)
+# Programs built by this Makefile that are also placed on the FAT32 volume.
+FAT_PROGRAMS := HELLO.ELF=$(BUILD_DIR)/demo_hello.elf
 
-$(FAT_IMG): tools/mkfat32.py $(FAT_FILES) | $(BUILD_DIR)
-	python3 tools/mkfat32.py $(FAT_IMG) 34 $(foreach f,$(FAT_FILES),$(notdir $(f))=$(f))
+$(FAT_IMG): tools/mkfat32.py $(FAT_FILES) $(BUILD_DIR)/demo_hello.elf | $(BUILD_DIR)
+	python3 tools/mkfat32.py $(FAT_IMG) 34 $(foreach f,$(FAT_FILES),$(notdir $(f))=$(f)) $(FAT_PROGRAMS)
 
 $(IMAGE): $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_BIN) $(FAT_IMG)
 	cat $(STAGE1_BIN) $(STAGE2_BIN) $(KERNEL_BIN) > $(IMAGE)

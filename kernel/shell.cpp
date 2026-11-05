@@ -304,7 +304,7 @@ void execute() {
         }
     } else if (token_is(command, token_len, "run")) {
         if (args[0] == '\0') {
-            vga::print("Usage: run <filename> [args...]\n");
+            vga::print("Usage: run <filename> [args...]   (fat:NAME runs from the FAT32 volume)\n");
         } else {
             // Split "file a b c" on spaces: argv[0] is the file name, the rest
             // become argv[1..]. A fixed environment is passed as envp.

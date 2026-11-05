@@ -1,6 +1,7 @@
 #include "process.hpp"
 
 #include "elf.hpp"
+#include "fat32.hpp"
 #include "fs.hpp"
 #include "paging.hpp"
 #include "pmm.hpp"
@@ -166,12 +167,23 @@ bool build_initial_stack(uint8_t* window, size_t window_size,
 
 bool run(const char* filename, int argc, const char* const* argv,
          int envc, const char* const* envp) {
-    if (!fs::exists(filename)) {
+    // Where the program lives: "fat:NAME" forces the FAT32 volume; otherwise
+    // VenomFS is tried first, then the FAT32 volume.
+    bool from_fat = false;
+    const char* path = filename;
+    if (filename[0] == 'f' && filename[1] == 'a' && filename[2] == 't' && filename[3] == ':') {
+        from_fat = true;
+        path = filename + 4;
+    } else if (!fs::exists(filename) && fat32::mounted() && fat32::file_size(filename) >= 0) {
+        from_fat = true;
+    }
+
+    if (from_fat ? !fat32::mounted() || fat32::file_size(path) < 0 : !fs::exists(path)) {
         print_error("File not found.\n");
         return false;
     }
 
-    int64_t size = fs::file_size(filename);
+    int64_t size = from_fat ? fat32::file_size(path) : fs::file_size(path);
     if (size <= 0) {
         print_error("Cannot run an empty file.\n");
         return false;
@@ -183,7 +195,9 @@ bool run(const char* filename, int argc, const char* const* argv,
 
     static uint8_t file_buffer[MAX_ELF_SIZE];
     size_t bytes_read = 0;
-    if (!fs::read(filename, file_buffer, MAX_ELF_SIZE, &bytes_read) || bytes_read == 0) {
+    const bool read_ok = from_fat ? fat32::read(path, file_buffer, MAX_ELF_SIZE, &bytes_read)
+                                  : fs::read(path, file_buffer, MAX_ELF_SIZE, &bytes_read);
+    if (!read_ok || bytes_read == 0) {
         print_error("Failed to read the file.\n");
         return false;
     }

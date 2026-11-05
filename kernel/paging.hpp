@@ -29,6 +29,12 @@ bool nx_enabled();
 // writable and executable (W^X violations). 0 means the space obeys W^X.
 uint64_t count_wx_pages(uint64_t pml4_phys);
 
+// Splits the kernel's first 2 MiB huge page into 4 KiB pages so the kernel
+// image itself obeys W^X (code R+X, rodata R+NX, data/bss/stack RW+NX), then
+// sets CR0.WP so ring 0 cannot write through read-only pages. Call once,
+// after pmm::init().
+bool protect_kernel_image();
+
 bool self_test();
 
 }

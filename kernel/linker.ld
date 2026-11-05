@@ -31,10 +31,19 @@ SECTIONS
         *(.text.*)
     }
 
+    /* W^X: code, read-only data and writable data each start on their own
+       4 KiB page, so paging::protect_kernel_image() can give each a distinct
+       permission (R+X, R+NX, RW+NX). */
+    . = ALIGN(4096);
+    kernel_text_end = .;
+
     .rodata : {
         *(.rodata)
         *(.rodata.*)
     }
+
+    . = ALIGN(4096);
+    kernel_rodata_end = .;
 
     .data : {
         *(.data)
@@ -49,6 +58,7 @@ SECTIONS
 
     /* Marks the first free byte after the kernel image - Phase 4's
        physical memory manager and heap will start allocating from here. */
+    . = ALIGN(4096);
     kernel_end = .;
 
     /DISCARD/ : {

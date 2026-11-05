@@ -22,7 +22,7 @@ CXXFLAGS := -ffreestanding -fno-exceptions -fno-rtti \
             -nostdlib -Wall -Wextra -std=c++17 -Wa,--noexecstack \
             -I$(INCLUDE_DIR) -I$(KERNEL_DIR)
 
-KERNEL_SECTOR_COUNT := 192
+KERNEL_SECTOR_COUNT := 224
 KERNEL_BUDGET_BYTES := $(shell echo $$(( $(KERNEL_SECTOR_COUNT) * 512 )))
 
 KERNEL_OBJS := \

@@ -225,7 +225,7 @@ Any other number returns `-1`.
 make
 ```
 
-This produces `build/venomos.img`, a 16 MiB disk image. The build fails on purpose if the Stage 1 binary is not exactly 512 bytes, Stage 2 is not exactly 3072 bytes, or the kernel outgrows its 192-sector (96 KiB) budget.
+This produces `build/venomos.img`, a 16 MiB disk image. The build fails on purpose if the Stage 1 binary is not exactly 512 bytes, Stage 2 is not exactly 3072 bytes, or the kernel outgrows its 224-sector (112 KiB) budget.
 
 **Clean, reproducible build.** Everything generated lives in `build/`, which is listed in `.gitignore` and must never be committed:
 
@@ -237,6 +237,24 @@ make check-clean       # fails if git tracks any generated output (build/, *.o, 
 # Running programs with arguments
 
 `run <file> [args...]` starts an ELF from VenomFS. The process gets the standard System V x86-64 entry stack: at `_start`, `RSP` is 16-byte aligned and points at `argc`, then `argv[0..argc-1]`, a NULL, `envp[...]`, a NULL, and an `AT_NULL` auxv pair. `argv[0]` is the file name; the shell passes `OS=VenomOS` and `SHELL=venomsh` as the environment. Limits: 16 arguments, 8 environment strings, 2 KiB in total. No registers carry arguments. `hello.elf` prints its arguments, e.g. `run hello.elf one two`.
+
+# System calls
+
+User programs call `int 0x80` with the number in `rax` and arguments in `rdi`, `rsi`, `rdx`; the result comes back in `rax` (`-1` on error). User pointers are validated page by page.
+
+| # | Name | Arguments | Result |
+|---|------|-----------|--------|
+| 0 | exit | code | does not return |
+| 1 | write | ptr, len | bytes written |
+| 2 | sleep | ticks | 0 |
+| 3 | getpid | - | pid |
+| 4 | getppid | - | parent pid |
+| 5 | uptime | - | timer ticks since boot |
+| 6 | read | fd (only 0 = keyboard), buf, len (max 256) | bytes read; non-blocking, 0 if no key is waiting |
+| 7 | filesize | path | size in bytes |
+| 8 | readfile | path, buf, len (max 4096) | bytes copied |
+
+Not yet available: blocking input, spawn/wait for user processes, and per-process file descriptors.
 
 # Run
 
@@ -315,9 +333,6 @@ These describe the code as it is today.
 - 8259 PIC only (no APIC), PS/2 keyboard only, VGA text mode only. No mouse, USB, networking or graphics.
 
 **Build and tooling**
-
-- The kernel image has a fixed 192-sector (96 KiB) budget, set in the `Makefile` and Stage 2 (the two values must match).
-- The CI workflow is stored in `example.github/workflows/build.yml`, not `.github/workflows/`, so GitHub does not run it. It also installs only `nasm`, `make` and QEMU, not the `x86_64-elf` cross-compiler the `Makefile` requires.
 
 ---
 

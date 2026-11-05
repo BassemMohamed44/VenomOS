@@ -34,7 +34,7 @@ Stage 1 ──► Stage 2 ──► Protected Mode ──► Long Mode
 | 7 | `boot/stage2.asm` | Exports the TSS address, its GDT descriptor address and the TSS selector to a fixed location so the kernel can finish TSS setup at runtime. |
 | 8 | `kernel/kernel_entry.asm` | Jumps to `kernel_main()`. |
 
-The disk image is `stage1` (512 bytes) + `stage2` (exactly 3072 bytes) + the kernel padded to a fixed budget of 192 sectors (96 KiB), then extended to 16 MiB. The `Makefile` fails the build if any of these sizes is exceeded.
+The disk image is `stage1` (512 bytes) + `stage2` (exactly 3072 bytes) + the kernel padded to a fixed budget of 224 sectors (112 KiB), then extended to 16 MiB. The `Makefile` fails the build if any of these sizes is exceeded.
 
 ### `kernel_main()` sequence
 

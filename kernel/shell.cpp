@@ -1,5 +1,6 @@
 #include "shell.hpp"
 
+#include "fat32.hpp"
 #include "fs.hpp"
 #include "heap.hpp"
 #include "pmm.hpp"
@@ -139,7 +140,7 @@ void execute() {
     if (token_is(command, token_len, "help")) {
         vga::print("Commands: help, clear, version, whoami, snake, meminfo, memtest,\n");
         vga::print("          usermode, stackoverflow, tasks, ls, cat, write, rm, run, ps, wait, sleep,\n");
-        vga::print("          stress [full]\n");
+        vga::print("          stress [full], fat ls [path], fat cat <path>\n");
     } else if (token_is(command, token_len, "clear")) {
         vga::clear(vga::Color::LightGrey, vga::Color::Black);
     } else if (token_is(command, token_len, "version")) {
@@ -198,6 +199,36 @@ void execute() {
             vga::set_color(vga::Color::LightRed, vga::Color::Black);
             vga::print("Failed to create one or both demo tasks (out of task slots or memory).\n");
             vga::set_color(vga::Color::White, vga::Color::Black);
+        }
+    } else if (token_is(command, token_len, "fat")) {
+        if (!fat32::mounted()) {
+            vga::print("No FAT32 volume is mounted (the disk image has none).\n");
+        } else if (args[0] == 'l' && args[1] == 's' && (args[2] == '\0' || args[2] == ' ')) {
+            const char* path = args[2] == ' ' ? &args[3] : "/";
+            if (!fat32::list(path, [](const fat32::DirEntryInfo& e, void*) {
+                    vga::print(e.name);
+                    if (e.is_dir) vga::print("/");
+                    else { vga::print("  "); print_uint(e.size); vga::print(" bytes"); }
+                    vga::put_char('\n');
+                }, nullptr)) {
+                vga::print("Not a directory or unreadable: ");
+                vga::print(path);
+                vga::put_char('\n');
+            }
+        } else if (args[0] == 'c' && args[1] == 'a' && args[2] == 't' && args[3] == ' ' && args[4] != '\0') {
+            static char fat_buf[1025];
+            size_t got = 0;
+            if (fat32::read(&args[4], fat_buf, sizeof(fat_buf) - 1, &got)) {
+                fat_buf[got] = '\0';
+                vga::print(fat_buf);
+                if (got > 0 && fat_buf[got - 1] != '\n') vga::put_char('\n');
+            } else {
+                vga::print("Cannot read: ");
+                vga::print(&args[4]);
+                vga::put_char('\n');
+            }
+        } else {
+            vga::print("Usage: fat ls [path] | fat cat <path>   (8.3 names, read-only)\n");
         }
     } else if (token_is(command, token_len, "ls")) {
         int count = 0;

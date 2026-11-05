@@ -20,6 +20,7 @@ The status below reflects the code in the repository. Architecture details are i
 - Syscall pointer validation (`usercopy`)
 - ATA PIO driver
 - VenomFS persistent filesystem (custom, not FAT) with multi-extent files and automatic formatting
+- Read-only FAT32 driver and a host tool (`tools/mkfat32.py`) that builds the volume; host-side tests via `make test-fat32`
 - **ELF64 loader** with hardened validation (`W^X`, bounds and overlap checks, user-space range checks) and NX applied to non-executable segments
 - Interactive shell, including `ps`, `wait`, `sleep`, `run`, `meminfo`, `memtest`
 - Snake game (bonus)
@@ -47,7 +48,7 @@ The status below reflects the code in the repository. Architecture details are i
 **Storage**
 
 - Directories and chained (non-contiguous) block allocation in VenomFS
-- A standard filesystem such as FAT32
+- FAT32: long file names, write support, and running programs from it
 
 **Memory**
 

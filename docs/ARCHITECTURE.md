@@ -34,7 +34,7 @@ Stage 1 ──► Stage 2 ──► Protected Mode ──► Long Mode
 | 7 | `boot/stage2.asm` | Exports the TSS address, its GDT descriptor address and the TSS selector to a fixed location so the kernel can finish TSS setup at runtime. |
 | 8 | `kernel/kernel_entry.asm` | Jumps to `kernel_main()`. |
 
-The disk image is `stage1` (512 bytes) + `stage2` (exactly 3072 bytes) + the kernel padded to a fixed budget of 224 sectors (112 KiB), then extended to 16 MiB. The `Makefile` fails the build if any of these sizes is exceeded.
+The disk image is `stage1` (512 bytes) + `stage2` (exactly 3072 bytes) + the kernel padded to a fixed budget of 224 sectors (112 KiB), then extended to 16 MiB; a 34 MiB FAT32 volume (built by `tools/mkfat32.py`) follows at sector 32768. The `Makefile` fails the build if any of these sizes is exceeded.
 
 ### `kernel_main()` sequence
 
@@ -164,5 +164,5 @@ Summarized from the code; the full list lives in the [README](../README.md#known
 - Memory management covers the first 1 GiB of RAM only.
 - Three syscalls; only the ring 0 shell can start processes; `wait` reaps any child.
 - Static `ET_EXEC` ELF64 only, 64 KiB maximum, fixed 16 KiB stack.
-- VenomFS is flat, with 64 files and at most 4 extents per file, on a fixed 16 MiB disk.
+- VenomFS is flat, with 64 files and at most 4 extents per file, on a fixed 16 MiB area. The FAT32 volume after it is mounted read-only by `kernel/fat32.cpp` (8.3 names, no LFN).
 - PIC, PS/2 and VGA text mode only.

@@ -5,6 +5,7 @@
 #include "heap.hpp"
 #include "pmm.hpp"
 #include "ata.hpp"
+#include "fat32.hpp"
 #include "fs.hpp"
 #include "process.hpp"
 #include "ring3.hpp"
@@ -138,6 +139,20 @@ extern "C" void kernel_main()
             vga::print("Filesystem      : FAIL (VenomFS could not be mounted/formatted)\n");
             vga::set_color(vga::Color::White, vga::Color::Black);
         }
+
+        vga::print("FAT32 volume   : ");
+        if (fat32::mount_disk()) {
+            if (fat32::self_test()) {
+                vga::set_color(vga::Color::LightGreen, vga::Color::Black);
+                vga::print("mounted read-only, self-test PASS (see 'fat ls')\n");
+            } else {
+                vga::set_color(vga::Color::LightRed, vga::Color::Black);
+                vga::print("mounted, but the self-test FAILED\n");
+            }
+        } else {
+            vga::print("not present (this disk image has no FAT32 volume)\n");
+        }
+        vga::set_color(vga::Color::White, vga::Color::Black);
 
         size_t demo_hello_size = static_cast<size_t>(demo_hello_end - demo_hello_start);
         if (fs_ok) {

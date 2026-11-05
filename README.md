@@ -301,7 +301,7 @@ These describe the code as it is today.
 - Single CPU core. Round-robin only, with a switch every 5 timer ticks, 128 task slots, no priorities.
 - No mutexes, semaphores or other synchronization primitives yet.
 - Only the shell (running in ring 0) can start processes. Ring 3 programs cannot spawn children, and `wait` reaps any child rather than a specific PID.
-- Only three syscalls exist (`exit`, `write`, `sleep`). User programs cannot read input, open files, or query their PID.
+- Nine syscalls exist (`exit`, `write`, `sleep`, `getpid`, `getppid`, `uptime`, `read`, `filesize`, `readfile`). Input is non-blocking keyboard only, files are read whole by path (no file descriptors), and user programs cannot spawn or wait for children.
 - Executables must be static `ET_EXEC` ELF64 files: no PIE, no dynamic linking, at most 64 KiB, at most 16 `PT_LOAD` segments, and a fixed 16 KiB user stack with a guard page.
 - A fault in ring 3 terminates that process with exit code `-1`. A CPU exception in the kernel itself halts the machine.
 
@@ -318,7 +318,6 @@ These describe the code as it is today.
 
 - The kernel image has a fixed 192-sector (96 KiB) budget, set in the `Makefile` and Stage 2 (the two values must match).
 - The CI workflow is stored in `example.github/workflows/build.yml`, not `.github/workflows/`, so GitHub does not run it. It also installs only `nasm`, `make` and QEMU, not the `x86_64-elf` cross-compiler the `Makefile` requires.
-- `docs/` contains two files whose names differ only by letter case (`STEP-BY-STEP.md` and `step-by-step.md`). `STEP-BY-STEP.md` is the current one; the other is an older copy, and the pair cannot be checked out together on case-insensitive filesystems such as Windows or default macOS.
 
 ---
 
@@ -327,7 +326,7 @@ These describe the code as it is today.
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full list. Near-term candidates:
 
 - A host-side tool to place programs on the disk image
-- More syscalls (read, file access, `getpid`) and ring 3 process creation
+- Blocking input, file descriptors, and ring 3 process creation (`spawn` / `wait`)
 - `wait` for a specific PID
 - Synchronization primitives (mutex / semaphore)
 - Non-contiguous VenomFS growth beyond four extents, and directories

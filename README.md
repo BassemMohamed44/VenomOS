@@ -238,6 +238,24 @@ make check-clean       # fails if git tracks any generated output (build/, *.o, 
 
 `run <file> [args...]` starts an ELF from VenomFS. The process gets the standard System V x86-64 entry stack: at `_start`, `RSP` is 16-byte aligned and points at `argc`, then `argv[0..argc-1]`, a NULL, `envp[...]`, a NULL, and an `AT_NULL` auxv pair. `argv[0]` is the file name; the shell passes `OS=VenomOS` and `SHELL=venomsh` as the environment. Limits: 16 arguments, 8 environment strings, 2 KiB in total. No registers carry arguments. `hello.elf` prints its arguments, e.g. `run hello.elf one two`.
 
+# System calls
+
+User programs call `int 0x80` with the number in `rax` and arguments in `rdi`, `rsi`, `rdx`; the result comes back in `rax` (`-1` on error). User pointers are validated page by page.
+
+| # | Name | Arguments | Result |
+|---|------|-----------|--------|
+| 0 | exit | code | does not return |
+| 1 | write | ptr, len | bytes written |
+| 2 | sleep | ticks | 0 |
+| 3 | getpid | - | pid |
+| 4 | getppid | - | parent pid |
+| 5 | uptime | - | timer ticks since boot |
+| 6 | read | fd (only 0 = keyboard), buf, len (max 256) | bytes read; non-blocking, 0 if no key is waiting |
+| 7 | filesize | path | size in bytes |
+| 8 | readfile | path, buf, len (max 4096) | bytes copied |
+
+Not yet available: blocking input, spawn/wait for user processes, and per-process file descriptors.
+
 # Run
 
 ```bash

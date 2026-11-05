@@ -1,6 +1,7 @@
 #include "interrupts.hpp"
 
 #include "../include/io.hpp"
+#include "fs.hpp"
 #include "keyboard.hpp"
 #include "process.hpp"
 #include "ring3.hpp"
@@ -31,6 +32,12 @@ constexpr uint64_t VECTOR_SYSCALL = 0x80;
 constexpr uint64_t SYS_EXIT  = 0;
 constexpr uint64_t SYS_WRITE = 1;
 constexpr uint64_t SYS_SLEEP = 2;
+constexpr uint64_t SYS_GETPID = 3;     // () -> pid
+constexpr uint64_t SYS_GETPPID = 4;    // () -> parent pid
+constexpr uint64_t SYS_UPTIME = 5;     // () -> timer ticks since boot
+constexpr uint64_t SYS_READ = 6;       // (fd, buf, len) -> bytes read; fd 0 = keyboard, non-blocking
+constexpr uint64_t SYS_FILESIZE = 7;   // (path) -> size in bytes, or -1
+constexpr uint64_t SYS_READFILE = 8;   // (path, buf, len) -> bytes copied (at most 4096), or -1
 
 constexpr uint64_t SYS_WRITE_MAX_LENGTH = 1024ull * 1024ull;
 
@@ -157,8 +164,78 @@ void print_hex(uint64_t value) {
     }
 }
 
+constexpr uint64_t SYS_ERROR = static_cast<uint64_t>(-1);
+constexpr size_t SYS_READFILE_MAX = 4096;
+
+// Copies a NUL-terminated file name out of user memory, one byte at a time so
+// every byte is validated. Fails if it is unmapped, empty or too long.
+bool copy_user_path(uintptr_t user_ptr, char* out, size_t capacity) {
+    for (size_t i = 0; i < capacity; ++i) {
+        char c;
+        if (!usercopy::copy_from_user(&c, reinterpret_cast<const void*>(user_ptr + i), 1)) return false;
+        out[i] = c;
+        if (c == '\0') return i > 0;
+    }
+    return false;
+}
+
 void handle_syscall(interrupts::InterruptFrame* frame) {
     switch (frame->rax) {
+        case SYS_GETPID: {
+            const task::Task* self = task::current();
+            frame->rax = self != nullptr ? static_cast<uint64_t>(self->pid) : SYS_ERROR;
+            break;
+        }
+        case SYS_GETPPID: {
+            const task::Task* self = task::current();
+            frame->rax = self != nullptr ? static_cast<uint64_t>(self->parent_pid) : SYS_ERROR;
+            break;
+        }
+        case SYS_UPTIME: {
+            frame->rax = interrupts::ticks();
+            break;
+        }
+        case SYS_READ: {
+            const uint64_t fd = frame->rdi;
+            uintptr_t user_buf = static_cast<uintptr_t>(frame->rsi);
+            uint64_t length = frame->rdx;
+            if (fd != 0 || length > 256) { frame->rax = SYS_ERROR; break; }
+            uint8_t chunk[256];
+            size_t got = 0;
+            while (got < length && keyboard::available()) {
+                chunk[got++] = static_cast<uint8_t>(keyboard::read_char());
+            }
+            if (got > 0 && !usercopy::copy_to_user(reinterpret_cast<void*>(user_buf), chunk, got)) {
+                frame->rax = SYS_ERROR;
+                break;
+            }
+            frame->rax = got;
+            break;
+        }
+        case SYS_FILESIZE: {
+            char name[fs::MAX_FILENAME + 1];
+            if (!copy_user_path(static_cast<uintptr_t>(frame->rdi), name, sizeof(name))) { frame->rax = SYS_ERROR; break; }
+            const int64_t size = fs::file_size(name);
+            frame->rax = size < 0 ? SYS_ERROR : static_cast<uint64_t>(size);
+            break;
+        }
+        case SYS_READFILE: {
+            char name[fs::MAX_FILENAME + 1];
+            uintptr_t user_buf = static_cast<uintptr_t>(frame->rsi);
+            uint64_t length = frame->rdx;
+            if (!copy_user_path(static_cast<uintptr_t>(frame->rdi), name, sizeof(name))) { frame->rax = SYS_ERROR; break; }
+            if (length > SYS_READFILE_MAX) length = SYS_READFILE_MAX;
+            if (!usercopy::validate_user_range(user_buf, static_cast<size_t>(length), true)) { frame->rax = SYS_ERROR; break; }
+            static uint8_t file_chunk[SYS_READFILE_MAX];
+            size_t got = 0;
+            if (!fs::read(name, file_chunk, static_cast<size_t>(length), &got)) { frame->rax = SYS_ERROR; break; }
+            if (got > 0 && !usercopy::copy_to_user(reinterpret_cast<void*>(user_buf), file_chunk, got)) {
+                frame->rax = SYS_ERROR;
+                break;
+            }
+            frame->rax = got;
+            break;
+        }
         case SYS_EXIT: {
             int exit_code = static_cast<int>(frame->rdi);
             task::exit_current(exit_code);
@@ -229,6 +306,46 @@ void init() {
 
 uint64_t ticks() {
     return timer_ticks;
+}
+
+bool syscall_self_test() {
+    InterruptFrame f = {};
+    bool ok = true;
+
+    f.rax = SYS_GETPID;
+    handle_syscall(&f);
+    ok = ok && task::current() != nullptr && f.rax == static_cast<uint64_t>(task::current()->pid);
+
+    f = {};
+    f.rax = SYS_GETPPID;
+    handle_syscall(&f);
+    ok = ok && f.rax == static_cast<uint64_t>(task::current()->parent_pid);
+
+    f = {};
+    f.rax = SYS_UPTIME;
+    handle_syscall(&f);
+    ok = ok && f.rax <= ticks();
+
+    // Unknown syscall numbers and kernel-space pointers are rejected.
+    f = {};
+    f.rax = 999;
+    handle_syscall(&f);
+    ok = ok && f.rax == SYS_ERROR;
+
+    static const char kernel_path[] = "hello.elf";
+    f = {};
+    f.rax = SYS_FILESIZE;
+    f.rdi = reinterpret_cast<uint64_t>(kernel_path);   // not a user address
+    handle_syscall(&f);
+    ok = ok && f.rax == SYS_ERROR;
+
+    f = {};
+    f.rax = SYS_READ;      // fd 1 is not readable
+    f.rdi = 1;
+    handle_syscall(&f);
+    ok = ok && f.rax == SYS_ERROR;
+
+    return ok;
 }
 
 extern "C" void interrupt_dispatch(InterruptFrame* frame) {

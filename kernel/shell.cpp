@@ -272,12 +272,37 @@ void execute() {
         }
     } else if (token_is(command, token_len, "run")) {
         if (args[0] == '\0') {
-            vga::print("Usage: run <filename>\n");
+            vga::print("Usage: run <filename> [args...]\n");
         } else {
+            // Split "file a b c" on spaces: argv[0] is the file name, the rest
+            // become argv[1..]. A fixed environment is passed as envp.
+            static char arg_text[256];
+            static const char* run_argv[process::MAX_ARGS];
+            int run_argc = 0;
+            size_t used = 0;
+            bool too_long = false;
+            size_t ai = 0;
+            while (args[ai] != '\0') {
+                while (args[ai] == ' ') ++ai;
+                if (args[ai] == '\0') break;
+                if (run_argc >= process::MAX_ARGS) { too_long = true; break; }
+                run_argv[run_argc++] = &arg_text[used];
+                while (args[ai] != '\0' && args[ai] != ' ') {
+                    if (used + 1 >= sizeof(arg_text)) { too_long = true; break; }
+                    arg_text[used++] = args[ai++];
+                }
+                if (too_long) break;
+                arg_text[used++] = '\0';
+            }
+            static const char* run_envp[] = { "OS=VenomOS", "SHELL=venomsh" };
+            if (too_long || run_argc == 0) {
+                vga::print("Too many or too long arguments.\n");
+                return;
+            }
             vga::print("Loading ");
-            vga::print(args);
+            vga::print(run_argv[0]);
             vga::print(" from VenomFS into its own isolated address space...\n");
-            if (process::run(args)) {
+            if (process::run(run_argv[0], run_argc, run_argv, 2, run_envp)) {
                 vga::set_color(vga::Color::LightGreen, vga::Color::Black);
                 vga::print("Process queued. The shell keeps running - output appears below\n");
                 vga::print("when the scheduler gives it a turn.\n");

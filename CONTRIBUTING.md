@@ -16,6 +16,13 @@ Build
 make
 ```
 
+Clean rebuild, and a check before every commit that no generated file is tracked (`build/` is git-ignored and must never be committed):
+
+```bash
+make clean && make
+make check-clean
+```
+
 Run
 
 ```bash

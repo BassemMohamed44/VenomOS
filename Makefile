@@ -55,7 +55,7 @@ KERNEL_ELF := $(BUILD_DIR)/kernel.elf
 KERNEL_RAW := $(BUILD_DIR)/kernel_raw.bin
 KERNEL_BIN := $(BUILD_DIR)/kernel.bin
 
-.PHONY: all clean run run-headless
+.PHONY: all clean run run-headless check-clean
 
 all: $(IMAGE)
 
@@ -191,3 +191,9 @@ run-headless: $(IMAGE)
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+# Repository hygiene: fails if git tracks any generated build output.
+check-clean:
+	@bad=$$(git ls-files -- '$(BUILD_DIR)/*' '*.o' '*.img' '*.elf' '*.bin' 2>/dev/null); \
+	if [ -n "$$bad" ]; then echo "Generated files are tracked by git:"; echo "$$bad"; exit 1; fi; \
+	echo "OK: no build outputs are tracked."

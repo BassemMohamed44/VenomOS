@@ -575,7 +575,6 @@ bool self_test() {
     }
     if (find_by_pid(grandchild_pid) != nullptr) ok = false;
 
-    Task* filled[MAX_TASKS];
     Pid filled_pids[MAX_TASKS];
     int filled_count = 0;
     bool hit_exhaustion = false;
@@ -585,7 +584,6 @@ bool self_test() {
             hit_exhaustion = true;
             break;
         }
-        filled[filled_count] = t;
         filled_pids[filled_count] = t->pid;
         ++filled_count;
     }

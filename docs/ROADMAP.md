@@ -13,7 +13,10 @@ The status below reflects the code in the repository. Architecture details are i
 - Kernel heap (`kmalloc` / `kfree`, split / merge, corruption detection)
 - Preemptive round-robin scheduler and multitasking
 - Process lifecycle: PID, parent / child, 7-state machine, exit codes, zombie reaping, sleep, idle task
-- Ring 3 user mode, TSS with per-task kernel stack, `int 0x80` syscalls (`exit`, `write`, `sleep`)
+- Ring 3 user mode, TSS with per-task kernel stack, `int 0x80` syscalls (`exit`, `write`, `sleep`, `getpid`, `getppid`, `uptime`, `read`, `filesize`, `readfile`)
+- `W^X` memory protection: NX on user data/stack and the kernel heap, kernel image split into R+X / R / RW+NX pages, `CR0.WP`
+- System V `argc`/`argv`/`envp` entry stack for ELF processes (`run <file> [args...]`)
+- Scheduler stress tests (`stress [full]`) and a clean-build workflow (`make check-clean`)
 - Syscall pointer validation (`usercopy`)
 - ATA PIO driver
 - VenomFS persistent filesystem (custom, not FAT) with multi-extent files and automatic formatting
@@ -24,13 +27,13 @@ The status below reflects the code in the repository. Architecture details are i
 
 ## In Progress
 
-- Documentation alignment with the implemented architecture (this update)
+- Nothing in progress. See the open issues in the tracker.
 
 ## Planned
 
 **Processes and syscalls**
 
-- More syscalls: `read`, file access, `getpid`
+- Blocking input, file descriptors, `spawn` / `wait` for ring 3
 - Let ring 3 processes spawn children (today only the ring 0 shell can)
 - `wait` for a specific PID
 - Synchronization primitives (mutex, semaphore)
@@ -58,8 +61,6 @@ The status below reflects the code in the repository. Architecture details are i
 **Project hygiene**
 
 - Make the CI workflow run: move it from `example.github/` to `.github/` and install the `x86_64-elf` cross-compiler
-- Reconcile the kernel's reported version (`0.2.0`) with `CHANGELOG.md` (up to `0.5.0`)
-- Remove the duplicate `docs/step-by-step.md` (an older copy that collides with `STEP-BY-STEP.md` on case-insensitive filesystems)
 
 ## Known Limitations
 

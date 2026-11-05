@@ -22,6 +22,9 @@ struct [[gnu::packed]] InterruptFrame {
 void init();
 uint64_t ticks();
 
+// Exercises the syscall handler from kernel context (no ring 3 needed).
+bool syscall_self_test();
+
 extern "C" void interrupt_dispatch(InterruptFrame* frame);
 
 }
